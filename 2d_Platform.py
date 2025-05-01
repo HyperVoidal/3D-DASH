@@ -1,5 +1,6 @@
 from ursina import *
 import math
+from ursina import Button 
 
 app = Ursina()
 
@@ -29,13 +30,8 @@ walls = [
 ]
 
 # Create ground
-# Stack ground on top of wall objects to stop internal collision
 ground = [
     Ground(position=(0, 0, 0), scale=(10, 1, 10)),
-    Ground(position=(5, 2.5, 0), scale=(1, 1, 1)),
-    Ground(position=(-5, 2.5, 0), scale=(1, 1, 1)),
-    Ground(position=(0, 2.5, 5), scale=(1, 1, 1)),
-    Ground(position=(0, 2.5, -5), scale=(1, 1, 1)),
 ]
 
 # Gravity and movement variables
@@ -43,13 +39,19 @@ gravity = -39.2  # Gravity acceleration
 velocity = 0
 is_grounded = False
 
-camera.position = Vec3(-20, 20, -20)  # Initial camera position
-camera.rotation = Vec3(0, 0, 0) #Initial camera rotation
+camera.position = Vec3(-20, 10, -20)  # Initial camera position
+camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
 camera.look_at(player.position) # Initial look at
+return_location = player.position + Vec3(-20, 10, -20)
+return_rotation = Vec3(0, 45, 0)
+return_speed = 5
+camera_loc = return_location
+
+
 
 
 def update():
-    global velocity, is_grounded, camera_yaw, camera_pitch, current_camera_pos, camera_distance, smoothing
+    global velocity, is_grounded, return_speed, return_location, return_rotation, camera_loc
 
     # Horizontal movement
     move_x = (held_keys['d'] - held_keys['a']) * time.dt * 5
@@ -58,14 +60,6 @@ def update():
     # Check for collisions before moving
     player.x += move_x
     player.z += move_z
-
-    for wall in walls:
-        if player.intersects(wall).hit:
-            # Undo movement if collision occurs
-            player.x -= move_x
-            player.z -= move_z
-            break
-
     # Jumping
     if is_grounded and held_keys['space']:
         velocity = 15  # Jump velocity
@@ -84,9 +78,37 @@ def update():
             is_grounded = True
             break
     
-    camera.look_at(player.position)  # Keep camera looking at player
-    camera.position = Vec3(player.x - 20, player.y + 20, player.z - 20)  # Update camera position based on player
+    # Wall collision
+    for wall in walls:
+        hit_info = player.intersects(wall)
+        if hit_info.hit:
+            wall_top_y = wall.world_y + wall.scale_y / 2  # Calculate the top of the wall
+            if player.y > wall_top_y + (player.scale_y/2.5):  # Ensure the player is above the wall
+                player.y = wall_top_y + player.scale_y / 2  # Place player on top of the wall
+                velocity = 0
+                is_grounded = True
+            else:
+                # Undo movement if side collision occurs
+                player.x -= move_x
+                player.z -= move_z
+            break
 
+    # Camera movement logic
+    if mouse.left:  # Check if the left mouse button is held
+        # Update the camera location continuously based on mouse movement
+        camera_loc.x -= mouse.velocity[0] * return_speed * 1000 * time.dt
+        camera_loc.y += mouse.velocity[1] * return_speed * 1000 * time.dt
+        camera.position = camera_loc  # Apply the updated location immediately
+    else:
+        # Smoothly return the camera to its original position
+        camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
+        camera.position = camera_loc
+
+        camerarot = camera.rotation
+        camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
+        camera.rotation = camera_rot
+
+    camera.look_at(player.position)
     
 
 
