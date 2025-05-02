@@ -4,35 +4,47 @@ from ursina import Button
 
 app = Ursina()
 
-# Player entity with a collider
-player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 10, 0))
-
 class Ground(Entity):
-    def __init__(self, position, scale):
-        super().__init__(model='cube', scale=scale, collider='box', color=color.black, position=position)
+    def __init__(self, position, scale, color):
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
 
     def destroy(self):
         self.disable()
 class Wall(Entity):
-    def __init__(self, position):
-        super().__init__(model='cube', scale=(1, 2, 1), collider='box', color=color.red, position=position)
+    def __init__(self, position, scale, color):
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
 
     def destroy(self):
         self.disable()
 
-
+col1 = color.black
+col2 = color.gray
+col3 = color.red
+zTelPos = [
+    [0, 0, 4],
+    [0, 0, 2],
+    [0, 0, 0],
+    [0, 0, -2],
+    [0, 0, -4]
+]
 # Create walls
 walls = [
-    Wall(position=(5, 1, 0)),
-    Wall(position=(-5, 1, 0)),
-    Wall(position=(0, 1, 5)),
-    Wall(position=(0, 1, -5)),
+    Wall(position=(4.5, 0.5, 0), scale=(1, 2, 1), color=col1),
+    Wall(position=(-3, 2, 0), scale=(1, 5, 10), color=col3),
 ]
 
 # Create ground
 ground = [
-    Ground(position=(0, 0, 0), scale=(10, 1, 10)),
+    Ground(position=(zTelPos[0]), scale=(5, 1, 2), color = col1),
+    Ground(position=(zTelPos[1]), scale=(5, 1, 2), color = col2),
+    Ground(position=(zTelPos[2]), scale=(5, 1, 2), color = col1),
+    Ground(position=(zTelPos[3]), scale=(5, 1, 2), color = col2),
+    Ground(position=(zTelPos[4]), scale=(5, 1, 2), color = col1)
 ]
+
+time.sleep(2)
+# Player entity with a collider
+player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 20, 0))
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
@@ -46,20 +58,36 @@ return_location = player.position + Vec3(-20, 10, -20)
 return_rotation = Vec3(0, 45, 0)
 return_speed = 5
 camera_loc = return_location
+movementkeyz = None
 
-
-
-
+currentztelpos = 2
+def input(key):
+    global currentztelpos
+    if key == 's':
+        if currentztelpos == 4:
+            pass
+        else:
+            currentztelpos += 1
+        #position shifts one lane further away from the camera
+        #if at the furthest possible lane, instead stay in the same place
+    if key == 'w':
+        if currentztelpos == 0:
+            pass
+        else:
+            currentztelpos -= 1
+        #position shifts one lane closer to camera
+        #if at the closest possible lane, instead stay in the same place
+    player.z = zTelPos[currentztelpos][2]
+    
 def update():
-    global velocity, is_grounded, return_speed, return_location, return_rotation, camera_loc
+    global velocity, is_grounded, return_speed, return_location, return_rotation, camera_loc, movementkeyz
 
     # Horizontal movement
     move_x = (held_keys['d'] - held_keys['a']) * time.dt * 5
-    move_z = (held_keys['w'] - held_keys['s']) * time.dt * 5
 
     # Check for collisions before moving
     player.x += move_x
-    player.z += move_z
+
     # Jumping
     if is_grounded and held_keys['space']:
         velocity = 15  # Jump velocity
@@ -83,14 +111,13 @@ def update():
         hit_info = player.intersects(wall)
         if hit_info.hit:
             wall_top_y = wall.world_y + wall.scale_y / 2  # Calculate the top of the wall
-            if player.y > wall_top_y + (player.scale_y/2.5):  # Ensure the player is above the wall
+            if player.y > wall_top_y + 0.3:  # Ensure the player is above the wall
                 player.y = wall_top_y + player.scale_y / 2  # Place player on top of the wall
                 velocity = 0
                 is_grounded = True
             else:
                 # Undo movement if side collision occurs
                 player.x -= move_x
-                player.z -= move_z
             break
 
     # Camera movement logic
