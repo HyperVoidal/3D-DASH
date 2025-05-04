@@ -17,6 +17,16 @@ class Wall(Entity):
     def destroy(self):
         self.disable()
 
+class Tint(Entity):
+    def __init__(self):
+        super().__init__(
+                model='Quad',
+                scale=(2, 2),  # Adjust scale to fit the camera view
+                color=color.rgba(255, 0, 0, 0.2),  # Red with 50% opacity
+                parent=camera.ui,  # Attach to the camera's UI layer
+                enabled=True
+            )
+
 col1 = color.black
 col2 = color.gray
 col3 = color.red
@@ -35,53 +45,59 @@ walls = [
 
 # Create ground
 ground = [
-    Ground(position=(zTelPos[0]), scale=(5, 1, 2), color = col1),
-    Ground(position=(zTelPos[1]), scale=(5, 1, 2), color = col2),
-    Ground(position=(zTelPos[2]), scale=(5, 1, 2), color = col1),
-    Ground(position=(zTelPos[3]), scale=(5, 1, 2), color = col2),
-    Ground(position=(zTelPos[4]), scale=(5, 1, 2), color = col1)
+    Ground(position=(zTelPos[0]), scale=(60, 1, 2), color = col1),
+    Ground(position=(zTelPos[1]), scale=(60, 1, 2), color = col2),
+    Ground(position=(zTelPos[2]), scale=(60, 1, 2), color = col1),
+    Ground(position=(zTelPos[3]), scale=(60, 1, 2), color = col2),
+    Ground(position=(zTelPos[4]), scale=(60, 1, 2), color = col1)
 ]
 
 time.sleep(2)
 # Player entity with a collider
-player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 20, 0))
+player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 5, 0))
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
 velocity = 0
 is_grounded = False
 
-camera.position = Vec3(-20, 10, -20)  # Initial camera position
+camera.position = Vec3(-20, 20, -20)  # Initial camera position
 camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
 camera.look_at(player.position) # Initial look at
-return_location = player.position + Vec3(-20, 10, -20)
 return_rotation = Vec3(0, 45, 0)
 return_speed = 5
-camera_loc = return_location
+camera_loc = player.position + Vec3(-20, 20, -20)
 movementkeyz = None
+camfollowspd = 2
 
 currentztelpos = 2
 def input(key):
     global currentztelpos
     if key == 's':
         if currentztelpos == 4:
-            pass
+            # Create a semi-transparent red tint
+            tint = Tint()
+            camera.shake(duration=0.5)
+            invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
         else:
             currentztelpos += 1
-        #position shifts one lane further away from the camera
-        #if at the furthest possible lane, instead stay in the same place
+        # position shifts one lane further away from the camera
+        # if at the furthest possible lane, instead stay in the same place
     if key == 'w':
         if currentztelpos == 0:
-            pass
+            # Create a semi-transparent red tint
+            tint = Tint()
+            camera.shake(duration=0.5)
+            invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
         else:
             currentztelpos -= 1
-        #position shifts one lane closer to camera
-        #if at the closest possible lane, instead stay in the same place
+        # position shifts one lane closer to camera
+        # if at the closest possible lane, instead stay in the same place
     player.z = zTelPos[currentztelpos][2]
     
 def update():
-    global velocity, is_grounded, return_speed, return_location, return_rotation, camera_loc, movementkeyz
-
+    global velocity, is_grounded, return_speed, return_rotation, camera_loc, movementkeyz, camfollowspd
+    return_location = player.position + Vec3(-20, 20, -20)
     # Horizontal movement
     move_x = (held_keys['d'] - held_keys['a']) * time.dt * 5
 
@@ -133,10 +149,10 @@ def update():
 
         camerarot = camera.rotation
         camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
-        camera.rotation = camera_rot
+        camera.rotation = camera_rot 
 
     camera.look_at(player.position)
-    
+        
 
 
 app.run()
