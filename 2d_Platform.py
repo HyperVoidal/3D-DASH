@@ -27,10 +27,28 @@ class Tint(Entity):
                 enabled=True
             )
         
-GameMap = Entity(model="Donut_Practice.blend", scale = 100, collider='mesh', color=color.white66, position = (50, -20, -5), dont_cast_shadow=True)
-GameMap.texture = "white_cube"
-GameMap.texture_scale = (1, 1)
-GameMap.texture_offset = (0, 0)
+GameMap = Entity(model="newtestingmap.glb", collider='mesh', color=color.white, position = (50, -20, -5))
+for child in GameMap.children:
+    if isinstance(child, Entity):
+        child.collider = 'mesh'  # Set collider for each child entity
+    if hasattr(child, 'INSTAKILL'):
+        color = color.red
+        child.color = color
+    if hasattr(child, 'SAFEGROUND'):
+        color = color.green
+        child.color = color
+
+#print all child entities of gamemap
+for child in GameMap.children:
+    if isinstance(child, Entity):
+        print(child.name)
+    if hasattr(child, 'INSTAKILL'):
+        print(child.name + " is instakill")
+    if hasattr(child, 'SAFEGROUND'):
+        print(child.name + " is safe ground")
+
+
+
 
 
 col1 = color.black
