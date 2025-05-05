@@ -26,6 +26,12 @@ class Tint(Entity):
                 parent=camera.ui,  # Attach to the camera's UI layer
                 enabled=True
             )
+        
+GameMap = Entity(model="Donut_Practice.blend", scale = 100, collider='mesh', color=color.white66, position = (50, -20, -5), dont_cast_shadow=True)
+GameMap.texture = "white_cube"
+GameMap.texture_scale = (1, 1)
+GameMap.texture_offset = (0, 0)
+
 
 col1 = color.black
 col2 = color.gray
@@ -54,11 +60,11 @@ ground = [
 
 time.sleep(2)
 # Player entity with a collider
-player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 5, 0))
+player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
-velocity = 0
+velocity = 39.2  # Initial vertical velocity
 is_grounded = False
 
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
@@ -152,7 +158,6 @@ def update():
         camera.rotation = camera_rot 
 
     camera.look_at(player.position)
-        
 
-
+    
 app.run()
