@@ -26,29 +26,6 @@ class Tint(Entity):
                 parent=camera.ui,  # Attach to the camera's UI layer
                 enabled=True
             )
-        
-GameMap = Entity(model="newtestingmap.glb", collider='mesh', color=color.white, position = (50, -20, -5))
-for child in GameMap.children:
-    if isinstance(child, Entity):
-        child.collider = 'mesh'  # Set collider for each child entity
-    if hasattr(child, 'INSTAKILL'):
-        color = color.red
-        child.color = color
-    if hasattr(child, 'SAFEGROUND'):
-        color = color.green
-        child.color = color
-
-#print all child entities of gamemap
-for child in GameMap.children:
-    if isinstance(child, Entity):
-        print(child.name)
-    if hasattr(child, 'INSTAKILL'):
-        print(child.name + " is instakill")
-    if hasattr(child, 'SAFEGROUND'):
-        print(child.name + " is safe ground")
-
-
-
 
 
 col1 = color.black
@@ -80,10 +57,18 @@ time.sleep(2)
 # Player entity with a collider
 player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 
+        
+safeGround = Entity(model='MAP.obj', collider='mesh')
+safeGround.position = (45, -0.5, 0)
+safeGround.show_colliders = True
+safeGround.scale = (2, 1, 1)
+safeGround.rotation = (0, 270, 0)
+
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
 velocity = 39.2  # Initial vertical velocity
 is_grounded = False
+move_x = 0.1
 
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
 camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
@@ -93,6 +78,7 @@ return_speed = 5
 camera_loc = player.position + Vec3(-20, 20, -20)
 movementkeyz = None
 camfollowspd = 2
+
 
 currentztelpos = 2
 def input(key):
@@ -119,11 +105,10 @@ def input(key):
         # if at the closest possible lane, instead stay in the same place
     player.z = zTelPos[currentztelpos][2]
     
+
 def update():
-    global velocity, is_grounded, return_speed, return_rotation, camera_loc, movementkeyz, camfollowspd
+    global velocity, is_grounded, return_speed, return_rotation, camera_loc, movementkeyz, camfollowspd, move_x
     return_location = player.position + Vec3(-20, 20, -20)
-    # Horizontal movement
-    move_x = (held_keys['d'] - held_keys['a']) * time.dt * 5
 
     # Check for collisions before moving
     player.x += move_x
@@ -159,7 +144,60 @@ def update():
                 # Undo movement if side collision occurs
                 player.x -= move_x
             break
+    
+    #really shit collision function BUT 
+    #it is proof that collision works
+    #collision is defined by the player model and needs to be set up in the update function
+    #need to consider the x and z axis coordinates of a given point and 
+    #set the player to the highest mesh point that corresponds to those coordinates
+    #find highest point of the mesh at the player x and z coordinates
+    #set player position to the highest point +0.1 in order to keep the player above the collision
+    
+    # SafeGround collision with multi-layer support
+    if safeGround.collider:
+        hit_info = player.intersects(safeGround)
+        if hit_info.hit:
+            # Access the mesh vertices
+            vertices = safeGround.model.vertices
 
+            # Find all valid heights at the player's x and z coordinates
+            #This section is the main point of error -  according to tests, it is able to find the vertices but
+            #Can't seem to get anything actually into the append statement for the valid heights.
+            #Possibly needs optimisations for vertex locating (e.g. approximate player position based rather than all)
+            valid_heights = []
+            for vertex in vertices:
+                vertex_world_pos = safeGround.world_position + Vec3(*vertex) * safeGround.scale
+                if abs(vertex_world_pos.x - player.x) < 2 and abs(vertex_world_pos.z - player.z) < 2:
+                    valid_heights.append(vertex_world_pos.y + 0.6)
+                #print(f"Vertex world position: {vertex_world_pos}")
+
+            # Sort heights in ascending order
+            valid_heights.sort()
+            print(f"Valid heights: {valid_heights}")
+
+            # Determine the correct height based on the player's current position and movement
+            target_height = None
+            for height in valid_heights:
+                if player.y >= height - 0.5:  # Player is above or near this layer
+                    target_height = height
+                else:
+                    break
+
+            # If no valid height is found, use the first height in the list
+            if target_height is None and valid_heights:
+                target_height = valid_heights[0]
+
+            print(f"Target height: {target_height}")
+
+            # Adjust player position if a valid height is found
+            if target_height is not None:
+                player.y = max(player.y, target_height + 0.1)  # Ensure the player stays above the mesh
+                velocity = 0
+                is_grounded = True
+    else:
+        print("SafeGround collider is not set. Please check the collider settings.")
+        
+        
     # Camera movement logic
     if mouse.left:  # Check if the left mouse button is held
         # Update the camera location continuously based on mouse movement
