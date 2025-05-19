@@ -63,6 +63,31 @@ safeGround.position = (45, -0.5, 0)
 safeGround.show_colliders = True
 safeGround.scale = (2, 1, 1)
 safeGround.rotation = (0, 270, 0)
+vertex_grid = []
+grid_size = 2
+vertices = safeGround.model.vertices
+for vertex in vertices:
+    vertex_world_pos = math.floor(safeGround.world_position + Vec3(*vertex) * safeGround.scale)
+    grid_x = int(vertex_world_pos.x // grid_size) * 2
+    grid_z = int(vertex_world_pos.z // grid_size)
+    grid_y = int(vertex_world_pos.y // grid_size)
+    coordinate = Vec3(grid_x, grid_y, grid_z)
+    listcoordinate = (grid_x, grid_y, grid_z)
+    if listcoordinate not in vertex_grid:
+        vertex_grid.append(coordinate)
+
+print(vertex_grid)
+
+""" for vertex in vertices:
+    vertex_world_pos = math.floor((safeGround.world_position + Vec3(*vertex) * safeGround.scale))
+    grid_x = math.floor(int(vertex_world_pos.x // grid_size))
+    grid_z = math.floor(int(vertex_world_pos.z // grid_size))
+    if (grid_x, grid_z) not in vertex_grid:
+        vertex_grid[(grid_x, grid_z)] = []
+    vertex_grid[(grid_x, grid_z)].append(math.floor(vertex_world_pos))
+    
+print(vertex_grid) """
+
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
@@ -104,6 +129,8 @@ def input(key):
         # position shifts one lane closer to camera
         # if at the closest possible lane, instead stay in the same place
     player.z = zTelPos[currentztelpos][2]
+    
+    
     
 
 def update():
@@ -157,13 +184,83 @@ def update():
     if safeGround.collider:
         hit_info = player.intersects(safeGround)
         if hit_info.hit:
-            # Access the mesh vertices
-            vertices = safeGround.model.vertices
+            player_grid_x = round(int(player.x // grid_size))
+            player_grid_z = round(int(player.z // grid_size))
+            player_grid_y = round(int(player.y))
+            playercell = [player_grid_x, player_grid_y, player_grid_z]
+            valid_heights = []
+            for dx in range (-2, 2):
+                for dz in range(-2, 2):
+                    cell = Vec3((3*(playercell[0] + dx)), (playercell[1] - 1), ((5)*(playercell[2] + dz)))
+                    print(cell)
+                    for i in range(len(vertex_grid)):
+                        if cell == vertex_grid[i]:
+                            valid_heights.append(vertex_world_pos.y + 0.1)
+            
+            print(valid_heights)
+            
+            #parse valid heights to player.y
+            mean = math.floor(sum(valid_heights) / len(valid_heights))
+            player.y = mean - 1
+
+            
+            
+        """ for dx in range(-2, 2):
+                for dz in range(-2, 2):
+                    cell = Vec3((3*(player_grid_x + dx)), (player.y - 1), ((5)*(player_grid_z + dz)))
+                    print(cell)
+                    #10/05 Vertex grid fills but this if statement does not fulfil
+                    #This is possibly due to an invalid comparison of a tuple to a dictionary
+                    #9:00 am 12/05 Also could be due to the invalid settings of cell vs vertex, as cell's tracking of the x coordinate seems off by a factor of 4
+                    #3:09 pm 12/05 potentially need to simplify to just compare cell to vert grid as they return similar variables, then clamp?? not sure
+                    if cell in vertex_grid:
+                        for vertex_world_pos in vertex_grid[cell]:
+                            if abs(vertex_world_pos.x - player.x) > 2 and abs(vertex_world_pos.z - player.z) > 2:
+                                valid_heights.append(vertex_world_pos.y + 0.1)
+                    else:
+                        pass
+                        #print("I don't feel like it today")
+            print(valid_heights) """
 
             # Find all valid heights at the player's x and z coordinates
             #This section is the main point of error -  according to tests, it is able to find the vertices but
             #Can't seem to get anything actually into the append statement for the valid heights.
             #Possibly needs optimisations for vertex locating (e.g. approximate player position based rather than all)
+    
+            
+            
+            
+    else:
+        print("SafeGround collider is not set. Please check the collider settings.")
+        
+        
+    # Camera movement logic (mouse controls)
+    if mouse.left:  # Check if the left mouse button is held
+        # Update the camera location continuously based on mouse movement
+        camera_loc.x -= mouse.velocity[0] * return_speed * 1000 * time.dt
+        camera_loc.y += mouse.velocity[1] * return_speed * 1000 * time.dt
+        camera.position = camera_loc  # Apply the updated location immediately
+    else:
+        # Smoothly return the camera to its original position
+        camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
+        camera.position = camera_loc
+
+        camerarot = camera.rotation
+        camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
+        camera.rotation = camera_rot 
+
+    camera.look_at(player.position)
+
+    
+app.run()
+
+
+
+#FAILED COLLISION MECHANICS #3
+#I have trapped it in the timeout corner
+""" 
+# Access the mesh vertices
+            vertices = safeGround.model.vertices
             valid_heights = []
             for vertex in vertices:
                 vertex_world_pos = safeGround.world_position + Vec3(*vertex) * safeGround.scale
@@ -193,27 +290,4 @@ def update():
             if target_height is not None:
                 player.y = max(player.y, target_height + 0.1)  # Ensure the player stays above the mesh
                 velocity = 0
-                is_grounded = True
-    else:
-        print("SafeGround collider is not set. Please check the collider settings.")
-        
-        
-    # Camera movement logic
-    if mouse.left:  # Check if the left mouse button is held
-        # Update the camera location continuously based on mouse movement
-        camera_loc.x -= mouse.velocity[0] * return_speed * 1000 * time.dt
-        camera_loc.y += mouse.velocity[1] * return_speed * 1000 * time.dt
-        camera.position = camera_loc  # Apply the updated location immediately
-    else:
-        # Smoothly return the camera to its original position
-        camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
-        camera.position = camera_loc
-
-        camerarot = camera.rotation
-        camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
-        camera.rotation = camera_rot 
-
-    camera.look_at(player.position)
-
-    
-app.run()
+                is_grounded = True """
