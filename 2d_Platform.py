@@ -183,6 +183,7 @@ def update():
     # SafeGround collision with multi-layer support
     if safeGround.collider:
         hit_info = player.intersects(safeGround)
+        print(hit_info)
         if hit_info.hit:
             player_grid_x = round(int(player.x // grid_size))
             player_grid_z = round(int(player.z // grid_size))
@@ -192,16 +193,17 @@ def update():
             for dx in range (-2, 2):
                 for dz in range(-2, 2):
                     cell = Vec3((3*(playercell[0] + dx)), (playercell[1] - 1), ((5)*(playercell[2] + dz)))
-                    print(cell)
+                    #print(cell)
                     for i in range(len(vertex_grid)):
                         if cell == vertex_grid[i]:
                             valid_heights.append(vertex_world_pos.y + 0.1)
             
-            print(valid_heights)
+            #print(valid_heights)
             
             #parse valid heights to player.y
             mean = math.floor(sum(valid_heights) / len(valid_heights))
             player.y = mean - 1
+    #AHAHAHA FLOOR COLLISION WORKS YEAHHHHHH
 
             
             
