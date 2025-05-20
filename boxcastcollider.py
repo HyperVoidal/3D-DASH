@@ -149,20 +149,25 @@ def update():
     player.y += velocity * time.dt
 
     is_grounded = False
-    # Use boxcast to check if the player is grounded
+
+    # --- Improved boxcast for highest ground point ---
+    # Cast a short box just below the player
+    boxcast_distance = 0.3  # Only check just below the player
+    boxcast_origin = player.position + Vec3(0, -0.15, 0)  # Slightly below feet
     hit_info = boxcast(
-        origin=player.position - Vec3(0, 1 * time.dt, 0),
+        origin=boxcast_origin,
         direction=Vec3(0, -1, 0),
-        distance=2,
+        distance=boxcast_distance,
         thickness=(player.scale_x, player.scale_z),
         ignore=(player,),
         debug=True
     )
+
     if hit_info.hit:
         is_grounded = True
-        print('hit')
-        player.y = hit_info.world_point.y + (player.scale_y * 2) + 1
-    
+        # Always set to the highest point found
+        player.y = hit_info.world_point.y + player.scale_y / 2 + 0.01  # 0.01 to avoid clipping
+        velocity = 0
     # Wall collision
     for wall in walls:
         hit_info = player.intersects(wall)
