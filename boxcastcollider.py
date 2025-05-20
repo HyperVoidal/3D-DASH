@@ -18,13 +18,14 @@ class Wall(Entity):
         self.disable()
 
 class Tint(Entity):
-    def __init__(self):
+    def __init__(self, opacity):
         super().__init__(
                 model='Quad',
                 scale=(2, 2),  # Adjust scale to fit the camera view
-                color=color.rgba(255, 0, 0, 0.2),  # Red with 50% opacity
+                color=color.rgba(255, 0, 0, opacity),  # Red tint
                 parent=camera.ui,  # Attach to the camera's UI layer
                 enabled=True
+                
             )
 
 
@@ -63,30 +64,7 @@ safeGround.position = (45, -0.5, 0)
 safeGround.show_colliders = True
 safeGround.scale = (2, 1, 1)
 safeGround.rotation = (0, 270, 0)
-vertex_grid = []
-grid_size = 2
-vertices = safeGround.model.vertices
-for vertex in vertices:
-    vertex_world_pos = math.floor(safeGround.world_position + Vec3(*vertex) * safeGround.scale)
-    grid_x = int(vertex_world_pos.x // grid_size) * 2
-    grid_z = int(vertex_world_pos.z // grid_size)
-    grid_y = int(vertex_world_pos.y // grid_size)
-    coordinate = Vec3(grid_x, grid_y, grid_z)
-    listcoordinate = (grid_x, grid_y, grid_z)
-    if listcoordinate not in vertex_grid:
-        vertex_grid.append(coordinate)
 
-print(vertex_grid)
-
-""" for vertex in vertices:
-    vertex_world_pos = math.floor((safeGround.world_position + Vec3(*vertex) * safeGround.scale))
-    grid_x = math.floor(int(vertex_world_pos.x // grid_size))
-    grid_z = math.floor(int(vertex_world_pos.z // grid_size))
-    if (grid_x, grid_z) not in vertex_grid:
-        vertex_grid[(grid_x, grid_z)] = []
-    vertex_grid[(grid_x, grid_z)].append(math.floor(vertex_world_pos))
-    
-print(vertex_grid) """
 
 
 # Gravity and movement variables
@@ -111,7 +89,7 @@ def input(key):
     if key == 's':
         if currentztelpos == 4:
             # Create a semi-transparent red tint
-            tint = Tint()
+            tint = Tint(opacity=0.2)
             camera.shake(duration=0.5)
             invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
         else:
@@ -121,7 +99,7 @@ def input(key):
     if key == 'w':
         if currentztelpos == 0:
             # Create a semi-transparent red tint
-            tint = Tint()
+            tint = Tint(opacity=0.2)
             camera.shake(duration=0.5)
             invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
         else:
@@ -135,6 +113,7 @@ def input(key):
 
 def update():
     global velocity, is_grounded, return_speed, return_rotation, camera_loc, movementkeyz, camfollowspd, move_x
+    global currentztelpos
     return_location = player.position + Vec3(-20, 20, -20)
 
     # Check for collisions before moving
@@ -153,14 +132,14 @@ def update():
     # --- Improved boxcast for highest ground point ---
     # Cast a short box just below the player
     boxcast_distance = 0.3  # Only check just below the player
-    boxcast_origin = player.position + Vec3(0, -0.15, 0)  # Slightly below feet
+    boxcast_origin = player.position + Vec3(0, -0.2, 0)  # Slightly below feet
     hit_info = boxcast(
         origin=boxcast_origin,
         direction=Vec3(0, -1, 0),
         distance=boxcast_distance,
         thickness=(player.scale_x, player.scale_z),
         ignore=(player,),
-        debug=True
+        debug=False # Hide the debugging hitbox
     )
 
     if hit_info.hit:
@@ -168,19 +147,31 @@ def update():
         # Always set to the highest point found
         player.y = hit_info.world_point.y + player.scale_y / 2 + 0.01  # 0.01 to avoid clipping
         velocity = 0
-    # Wall collision
-    for wall in walls:
-        hit_info = player.intersects(wall)
-        if hit_info.hit:
-            wall_top_y = wall.world_y + wall.scale_y / 2  # Calculate the top of the wall
-            if player.y > wall_top_y + 0.3:  # Ensure the player is above the wall
-                player.y = wall_top_y + player.scale_y / 2  # Place player on top of the wall
-                velocity = 0
-                is_grounded = True
-            else:
-                # Undo movement if side collision occurs
-                player.x -= move_x
-            break
+        
+    # --- Boxcast for wall collision (instakill) ---
+    # Add a secondary box collider at the top half of the player model (to avoid accidental floor collisions)
+    # Use to detect anything in front of the player in an incredibly short range. 
+    # This could be implemented by forming a boxcast at the player's xyz coordinates but limiting the scale to 
+    # x/2, y/2, z (where each coordinate value is derived from the playermodel)
+    # The boxcast collider volume could extend inside the player and not forwards from it
+    # Thus causing the boxcast to only trigger once the player actively intersects with a wall.
+    deathboxcast_d = 0.5
+    hit_info_death = boxcast(
+        origin=player.position + Vec3(0, 0.5, 0),  # Start from the top half of the player
+        direction=Vec3(1, 0, 0),  # Cast forward
+        distance=deathboxcast_d,
+        thickness=(player.scale_x / 2, player.scale_y / 2),
+        ignore=(player,),
+        debug=False  # Hide the debugging hitbox
+    )
+    
+    if hit_info_death.hit:
+        # If the player collides with a wall, reset position to start of level
+        player.position = (0, 30, 0)
+        currentztelpos = 2        
+        # stand-in for a proper death animation - literally just red tint
+        tint = Tint(opacity=0.7)
+        invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
     
     #safeground verification
     if safeGround.collider:
