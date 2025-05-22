@@ -1,9 +1,41 @@
 from ursina import *
 import math
 from ursina import Button 
+from direct.actor.Actor import Actor
 
 app = Ursina()
 
+# --- PRE-APP SETUP AND VARIABLES ---
+# Starting model rendering - preload player, ground entities, walls, and animations to avoid stuttering
+time.sleep(2)
+# Player entity with a collider
+player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
+#rgba value is set to the blender colour of the player model
+        
+safeGround = Entity(model='MAP.obj', collider='mesh')
+safeGround.position = (52.5, -0.5, 0)
+safeGround.show_colliders = True
+safeGround.scale = (2, 1, 1.5)
+safeGround.rotation = (0, 270, 0)
+
+# Gravity and movement variables
+gravity = -39.2  # Gravity acceleration
+velocity = 39.2  # Initial vertical velocity
+is_grounded = False
+move_x = 0.1
+
+#Camera Positioning
+camera.position = Vec3(-20, 20, -20)  # Initial camera position
+camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
+camera.look_at(player.position) # Initial look at
+return_rotation = Vec3(0, 45, 0)
+return_speed = 5 #how fast the camera returns to equilibrium position
+camera_loc = player.position + Vec3(-20, 20, -20)
+currentztelpos = 2
+
+
+#Starting ground functions for rendering (TO BE PUT INTO A CLASS OR SEPERATE FILE FOR "LEVEL START")
+#This component will be maintained at the start of all levels
 class Ground(Entity):
     def __init__(self, position, scale, color):
         super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
@@ -16,19 +48,8 @@ class Wall(Entity):
 
     def destroy(self):
         self.disable()
-
-class Tint(Entity):
-    def __init__(self, opacity):
-        super().__init__(
-                model='Quad',
-                scale=(2, 2),  # Adjust scale to fit the camera view
-                color=color.rgba(255, 0, 0, opacity),  # Red tint
-                parent=camera.ui,  # Attach to the camera's UI layer
-                enabled=True
-                
-            )
-
-
+        
+        
 col1 = color.black
 col2 = color.gray
 col3 = color.red
@@ -54,36 +75,79 @@ ground = [
     Ground(position=(zTelPos[4]), scale=(60, 1, 2), color = col1)
 ]
 
-time.sleep(2)
-# Player entity with a collider
-player = Entity(model='cube', color=color.orange, scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 
+
+
+
+
+
+# --- Main Classes ---
+
+class Tint(Entity):
+    def __init__(self, opacity):
+        super().__init__(
+                model='Quad',
+                scale=(2, 2),  # Adjust scale to fit the camera view
+                color=color.rgba(255, 0, 0, opacity),  # Red tint
+                parent=camera.ui,  # Attach to the camera's UI layer
+                enabled=True
+                
+            )
+
+class Cubedeath(Entity):
+    def __init__(self, position):
+        super().__init__(
+            model='Explode_Cube.glb',
+            scale=(1, 1, 1),
+            color=color.red,
+            position=position
+        )
         
-safeGround = Entity(model='MAP.obj', collider='mesh')
-safeGround.position = (45, -0.5, 0)
-safeGround.show_colliders = True
-safeGround.scale = (2, 1, 1)
-safeGround.rotation = (0, 270, 0)
+class BakedMeshAnimation(Entity):
+    def __init__(self, frame_files, frame_time=0.03, **kwargs):
+        super().__init__(model=frame_files[0], **kwargs)
+        self.frame_files = frame_files
+        self.frame_time = frame_time
+        self.current_frame = 0
+        self.time_accum = 0
+        self.playing = False
+        self.finished_callback = None
+        self.disable()  # Hide by default
 
+    def play(self, position, finished_callback=None):
+        self.position = position
+        self.current_frame = 0
+        self.time_accum = 0
+        self.model = self.frame_files[0]
+        self.playing = True
+        self.enable()
+        self.finished_callback = finished_callback
 
+    def update(self):
+        if not self.playing:
+            return
+        self.time_accum += time.dt
+        if self.time_accum >= self.frame_time:
+            self.time_accum = 0
+            self.current_frame += 1
+            if self.current_frame < len(self.frame_files):
+                self.model = self.frame_files[self.current_frame]
+            else:
+                self.playing = False
+                self.disable()
+                if self.finished_callback:
+                    self.finished_callback()
 
-# Gravity and movement variables
-gravity = -39.2  # Gravity acceleration
-velocity = 39.2  # Initial vertical velocity
-is_grounded = False
-move_x = 0.1
+def respawn_player():
+    global velocity, currentztelpos # <-- Add this line
+    player.position = Vec3(0, 5, 0)
+    player.movement = Vec3(0, 10, 0) 
+    velocity = 0     # <-- Reset velocity here
+    player.z = zTelPos[2][2]
+    currentztelpos = 2 # <-- Reset currentztelpos here
+    player.enable()
 
-camera.position = Vec3(-20, 20, -20)  # Initial camera position
-camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
-camera.look_at(player.position) # Initial look at
-return_rotation = Vec3(0, 45, 0)
-return_speed = 5
-camera_loc = player.position + Vec3(-20, 20, -20)
-movementkeyz = None
-camfollowspd = 2
-
-
-currentztelpos = 2
+# --- Input Handling ---
 def input(key):
     global currentztelpos
     if key == 's':
@@ -107,12 +171,23 @@ def input(key):
         # position shifts one lane closer to camera
         # if at the closest possible lane, instead stay in the same place
     player.z = zTelPos[currentztelpos][2]
-    
-    
-    
 
+# --- Prerender Animations before game start ---
+
+# Prepare the list of animation frames
+death_anim_frames = [f'cubedeathanimation/Explode_Cube.f{str(i).zfill(4)}.glb' for i in range(1, 40)]
+# --- PRELOAD all animation frames to avoid first-run lag ---
+for frame in death_anim_frames:
+    Entity(model=frame, enabled=False)  # Load and cache the model
+
+death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1))
+death_anim.disable()
+
+
+
+# --- Main Update Loop ---
 def update():
-    global velocity, is_grounded, return_speed, return_rotation, camera_loc, movementkeyz, camfollowspd, move_x
+    global velocity, is_grounded, return_speed, return_rotation, camera_loc, move_x
     global currentztelpos
     return_location = player.position + Vec3(-20, 20, -20)
 
@@ -132,14 +207,14 @@ def update():
     # --- Improved boxcast for highest ground point ---
     # Cast a short box just below the player
     boxcast_distance = 0.3  # Only check just below the player
-    boxcast_origin = player.position + Vec3(0, -0.2, 0)  # Slightly below feet
+    boxcast_origin = player.position + Vec3(0, -0.3, 0)  # Slightly below feet
     hit_info = boxcast(
         origin=boxcast_origin,
         direction=Vec3(0, -1, 0),
         distance=boxcast_distance,
         thickness=(player.scale_x, player.scale_z),
         ignore=(player,),
-        debug=False # Hide the debugging hitbox
+        debug=True # Hide the debugging hitbox
     )
 
     if hit_info.hit:
@@ -165,14 +240,11 @@ def update():
         debug=False  # Hide the debugging hitbox
     )
     
-    if hit_info_death.hit:
-        # If the player collides with a wall, reset position to start of level
-        player.position = (0, 30, 0)
-        currentztelpos = 2        
-        # stand-in for a proper death animation - literally just red tint
-        tint = Tint(opacity=0.7)
-        invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
-    
+    if hit_info_death.hit and not death_anim.playing:
+        # Despawn player, play baked animation, respawn after
+        player.disable()
+        death_anim.play(player.position, finished_callback=respawn_player)
+
     #safeground verification
     if safeGround.collider:
         pass
@@ -183,8 +255,8 @@ def update():
     # Camera movement logic (mouse controls)
     if mouse.left:  # Check if the left mouse button is held
         # Update the camera location continuously based on mouse movement
-        camera_loc.x -= mouse.velocity[0] * return_speed * 1000 * time.dt
-        camera_loc.y += mouse.velocity[1] * return_speed * 1000 * time.dt
+        camera_loc.x -= mouse.velocity[0] * return_speed * 1500 * time.dt
+        camera_loc.y += mouse.velocity[1] * return_speed * 1500 * time.dt
         camera.position = camera_loc  # Apply the updated location immediately
     else:
         # Smoothly return the camera to its original position
