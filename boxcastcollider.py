@@ -3,15 +3,25 @@ import math
 from ursina import Button 
 from direct.actor.Actor import Actor
 
+window.fps_limit = 60
 app = Ursina()
 
+# Cap fps to 60 to avoid frame stuttering on heavy model rendering
+# Game objects are currently dependent on frame rate so capping it to 60 will help with consistency across devices and parity while developing on different devices
+window.vsync = False
+window.fps_limit = 60
+application.fps_limit = 60
+
+
 # --- PRE-APP SETUP AND VARIABLES ---
-# Starting model rendering - preload player, ground entities, walls, and animations to avoid stuttering
-time.sleep(2)
 # Player entity with a collider
 player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 #rgba value is set to the blender colour of the player model
-        
+
+
+
+#Collision map for the ground entity. 
+# Replace with an automated replacement of the model once level select screen is implemented and multiple maps are made        
 safeGround = Entity(model='MAP.obj', collider='mesh')
 safeGround.position = (52.5, -0.5, 0)
 safeGround.show_colliders = True
@@ -93,15 +103,6 @@ class Tint(Entity):
                 enabled=True
                 
             )
-
-class Cubedeath(Entity):
-    def __init__(self, position):
-        super().__init__(
-            model='Explode_Cube.glb',
-            scale=(1, 1, 1),
-            color=color.red,
-            position=position
-        )
         
 class BakedMeshAnimation(Entity):
     def __init__(self, frame_files, frame_time=0.03, **kwargs):
@@ -175,7 +176,7 @@ def input(key):
 # --- Prerender Animations before game start ---
 
 # Prepare the list of animation frames
-death_anim_frames = [f'cubedeathanimation/Explode_Cube.f{str(i).zfill(4)}.glb' for i in range(1, 40)]
+death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 90)]
 # --- PRELOAD all animation frames to avoid first-run lag ---
 for frame in death_anim_frames:
     Entity(model=frame, enabled=False)  # Load and cache the model
