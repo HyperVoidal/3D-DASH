@@ -2,15 +2,20 @@ from ursina import *
 import math
 from ursina import Button 
 from direct.actor.Actor import Actor
+import time
 
-window.fps_limit = 60
-app = Ursina()
-
+#Loading screen asset caller - used later
+game_ready = False
 # Cap fps to 60 to avoid frame stuttering on heavy model rendering
 # Game objects are currently dependent on frame rate so capping it to 60 will help with consistency across devices and parity while developing on different devices
-window.vsync = False
+window.vsync = True
 window.fps_limit = 60
 application.fps_limit = 60
+app = Ursina()
+camera_locked = False
+rot_locked = False
+
+
 
 
 # --- PRE-APP SETUP AND VARIABLES ---
@@ -32,7 +37,7 @@ safeGround.rotation = (0, 270, 0)
 gravity = -39.2  # Gravity acceleration
 velocity = 39.2  # Initial vertical velocity
 is_grounded = False
-move_x = 0.1
+move_x = 6 #movespeed
 
 #Camera Positioning
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
@@ -139,19 +144,74 @@ class BakedMeshAnimation(Entity):
                 if self.finished_callback:
                     self.finished_callback()
 
+player_immobilized = False  # Add this global flag
+
 def respawn_player():
-    global velocity, currentztelpos # <-- Add this line
+    global velocity, currentztelpos, camera_locked, rot_locked, player_immobilized
     player.position = Vec3(0, 5, 0)
     player.movement = Vec3(0, 10, 0) 
-    velocity = 0     # <-- Reset velocity here
+    velocity = 0
     player.z = zTelPos[2][2]
-    currentztelpos = 2 # <-- Reset currentztelpos here
+    currentztelpos = 2
     player.enable()
+    camera_locked = False  # Unlock camera on respawn
+    rot_locked = False
+    player_immobilized = False  # Allow movement after respawn animation
 
-# --- Input Handling ---
+def checkrotation(from_pos, to_pos):
+    temp = Entity(position=from_pos)
+    temp.look_at(to_pos)
+    rot = temp.rotation
+    destroy(temp)
+    return rot
+
+def respawn_anim():
+    global camera_locked, rot_locked, player_immobilized
+    camera_locked = True
+    rot_locked = True
+    player_immobilized = True  # Immobilize player during respawn animation
+    deathpos = camera.position
+    camerarot = camera.rotation
+    playercampos = player.position + Vec3(-20, 20, -20)
+    return_rotation = checkrotation(playercampos, player.position)
+    
+    camera_loc = lerp(deathpos, playercampos, time.dt * return_speed)
+    camera.position = camera_loc
+    camerarot = camera.rotation
+    camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
+    camera.rotation = camera_rot
+
+    # Check if camera is close enough to target position and rotation
+    if (distance(camera.position, playercampos) < 0.1 and 
+        distance(camera.rotation, return_rotation) < 0.5):
+        camera_locked = False
+        rot_locked = False
+        player_immobilized = False  # Re-enable player movement
+
 def input(key):
-    global currentztelpos
-    if key == 's':
+    global currentztelpos, rot_locked, camera_locked, player_immobilized
+    
+    #reset - instakills and respawns player
+    if key == 'r':
+        if not death_anim.playing:
+            player.disable()
+            death_anim.play(player.position, finished_callback=respawn_player)
+            camera_locked = True  # Lock camera when player dies
+            rot_locked = True
+        else:
+            pass  # Ignore input if death animation is playing
+        
+    #exit game
+    if key == 'escape':
+        quit()
+        
+    #toggle fullscreen mode
+    if key == 'f':
+        # Toggle fullscreen mode
+        window.fullscreen = not window.fullscreen
+        
+    #main controls: d for left and a for right
+    if key == 'd':
         if currentztelpos == 4:
             # Create a semi-transparent red tint
             tint = Tint(opacity=0.2)
@@ -161,7 +221,7 @@ def input(key):
             currentztelpos += 1
         # position shifts one lane further away from the camera
         # if at the furthest possible lane, instead stay in the same place
-    if key == 'w':
+    if key == 'a':
         if currentztelpos == 0:
             # Create a semi-transparent red tint
             tint = Tint(opacity=0.2)
@@ -176,32 +236,62 @@ def input(key):
 # --- Prerender Animations before game start ---
 
 # Prepare the list of animation frames
-death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 90)]
+death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
+loading_text = Text("Loading...", origin=(0,0), scale=2, background=True)
+loading_text.enabled = True
+
+def finish_loading():
+    global game_ready
+    loading_text.enabled = False
+    game_ready = True
+
 # --- PRELOAD all animation frames to avoid first-run lag ---
 for frame in death_anim_frames:
     Entity(model=frame, enabled=False)  # Load and cache the model
 
-death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1))
+death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1))
 death_anim.disable()
 
+# After all loading is done, schedule finish_loading
+invoke(finish_loading, delay=0.1)
 
+
+
+fixed_dt = 1/60  # 60 updates per second
+accumulator = 0
 
 # --- Main Update Loop ---
 def update():
-    global velocity, is_grounded, return_speed, return_rotation, camera_loc, move_x
-    global currentztelpos
+    global accumulator
+    if not game_ready:
+        return
+
+    # Forcefully set the maximum number of game updates per second to 60. 
+    # Update function runs at max available fps but the game logic is capped to 60 updates per second. 
+    # Anything reliant on framerates works in the game logic step function. 
+    # If necessary, something requiring a higher framerate can be run in the update function
+    accumulator += time.dt
+    while accumulator >= fixed_dt:
+        game_logic_step(fixed_dt)
+        accumulator -= fixed_dt
+
+def game_logic_step(dt):
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked
+    # Use dt instead of time.dt everywhere in your logic
+
+    if not player_immobilized:
+        player.x += move_x * dt
+
+    #camera return location
     return_location = player.position + Vec3(-20, 20, -20)
 
-    # Check for collisions before moving
-    player.x += move_x
-
     # Jumping
-    if is_grounded and held_keys['space']:
+    if is_grounded and held_keys['space'] and not player_immobilized:
         velocity = 15  # Jump velocity
 
     # Apply gravity
-    velocity += gravity * time.dt
-    player.y += velocity * time.dt
+    velocity += gravity * dt
+    player.y += velocity * dt
 
     is_grounded = False
 
@@ -215,7 +305,7 @@ def update():
         distance=boxcast_distance,
         thickness=(player.scale_x, player.scale_z),
         ignore=(player,),
-        debug=True # Hide the debugging hitbox
+        debug=False # Hide the debugging hitbox
     )
 
     if hit_info.hit:
@@ -242,9 +332,10 @@ def update():
     )
     
     if hit_info_death.hit and not death_anim.playing:
-        # Despawn player, play baked animation, respawn after
         player.disable()
         death_anim.play(player.position, finished_callback=respawn_player)
+        camera_locked = True  # Lock camera when player dies
+        rot_locked = True
 
     #safeground verification
     if safeGround.collider:
@@ -252,23 +343,21 @@ def update():
     else:
         print("SafeGround collider is not set. Please check the collider settings.")
         
-        
     # Camera movement logic (mouse controls)
-    if mouse.left:  # Check if the left mouse button is held
-        # Update the camera location continuously based on mouse movement
-        camera_loc.x -= mouse.velocity[0] * return_speed * 1500 * time.dt
-        camera_loc.y += mouse.velocity[1] * return_speed * 1500 * time.dt
-        camera.position = camera_loc  # Apply the updated location immediately
-    else:
-        # Smoothly return the camera to its original position
-        camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
-        camera.position = camera_loc
+    if not camera_locked:
+        if mouse.left:
+            camera_loc.x -= mouse.velocity[0] * return_speed * 1500 * time.dt
+            camera_loc.y += mouse.velocity[1] * return_speed * 1500 * time.dt
+            camera.position = camera_loc
+        else:
+            camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
+            camera.position = camera_loc
 
-        camerarot = camera.rotation
-        camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
-        camera.rotation = camera_rot 
-
-    camera.look_at(player.position)
+            camerarot = camera.rotation
+            camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
+            camera.rotation = camera_rot
+    if not rot_locked:
+        camera.look_at(player.position)
 
     
 app.run()
