@@ -3,6 +3,7 @@ import math
 from ursina import Button 
 from direct.actor.Actor import Actor
 import time
+import threading 
 
 #Loading screen asset caller - used later
 game_ready = False
@@ -97,6 +98,184 @@ ground = [
 
 
 # --- Main Classes ---
+# Loading Screen
+class LoadingScreen(Entity):
+    def __init__(self):
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 0, 0, 0.5),  # Semi-transparent black
+            parent=camera.ui,
+            enabled=True
+        )
+        self.text = Text("Loading...", origin=(0, 0), scale=2, background=True, parent=self)
+    
+    def disable(self):
+        self.enabled = False
+        self.text.enabled = False
+        
+# Run main menu before ALMOST everything else
+# Main menu should freeze player and then render an interactive menu with mouse clickable options for 
+# Level Select, options, and player customisation
+class MainMenu(Entity):
+    def __init__(self):
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 0, 255, 1),  # rgb + opacity
+            parent=camera.ui,
+            enabled=False
+        )
+        self.text = None
+        self.start_button = None
+        self.options_button = None
+        self.customise_button = None
+        self.quit_button = None
+        self.options_back_button = None
+        self.customise_back_button = None
+
+    def rendermenu(self):
+        global player_immobilized
+        player_immobilized = True
+        self.enabled = True
+        self.text = Text("Main Menu", origin=(0, -4), scale=2, background=True, parent=self)
+        self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
+        self.options_button = Button(text="Options", scale=(0.5, 0.1), position=(0, 0), parent=self, on_click=self.open_options)
+        self.customise_button = Button(text="Wardrobe", scale=(0.5, 0.1), position=(0, -0.1), parent=self, on_click=self.open_customisation)
+        self.quit_button = Button(text="Quit", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.quit_game)
+
+    def enable_menu_components(self, enabled=True):
+        if self.text: self.text.enabled = enabled
+        if self.start_button: self.start_button.enabled = enabled
+        if self.options_button: self.options_button.enabled = enabled
+        if self.customise_button: self.customise_button.enabled = enabled
+        if self.quit_button: self.quit_button.enabled = enabled
+
+    def open_level_select(self):
+        self.enable_menu_components(False)
+        if not hasattr(self, 'level_select_screen'):
+            self.level_select_screen = LevelSelect(self)
+        self.level_select_screen.show()
+
+    def open_customisation(self):
+        self.enable_menu_components(False)
+        if not self.customise_back_button:
+            self.customise_text = Text("Customisation menu opened (not implemented yet).", origin=(0, 0), scale=1.5, background=True, parent=self)
+            self.customise_back_button = Button(text="Back", scale=(0.3, 0.1), position=(0, -0.2), parent=self, on_click=self.close_customisation)
+        else:
+            self.customise_text.enabled = True
+            self.customise_back_button.enabled = True
+
+    def close_customisation(self):
+        self.customise_text.enabled = False
+        self.customise_back_button.enabled = False
+        self.enable_menu_components(True)
+
+    def open_options(self):
+        self.enable_menu_components(False)
+        if not self.options_back_button:
+            self.options_text = Text("Options menu opened (not implemented yet).", origin=(0, 0), scale=1.5, background=True, parent=self)
+            self.options_back_button = Button(text="Back", scale=(0.3, 0.1), position=(0, -0.2), parent=self, on_click=self.close_options)
+        else:
+            self.options_text.enabled = True
+            self.options_back_button.enabled = True
+
+    def close_options(self):
+        self.options_text.enabled = False
+        self.options_back_button.enabled = False
+        self.enable_menu_components(True)
+
+    def quit_game(self):
+        quit()
+
+class LevelSelect(Entity):
+    def __init__(self, main_menu):
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 255, 0, 1),  # Green background
+            parent=camera.ui,
+            enabled=False
+        )
+        self.main_menu = main_menu
+        self.left_button = Button(text="Left", scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
+        self.right_button = Button(text="Right", scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=self.next_level)
+        self.level_text = Text("Level 1: The Beginning", origin=(0, 0.5), scale=2, background=True, parent=self)
+        self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
+        self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
+        self.score = None # Placeholder for distance value, implement from json file when implemented
+        self.hide()
+    
+    def level(self):
+        self.level_text = Text
+
+    def show(self):
+        self.enabled = True
+        self.left_button.enabled = True
+        self.right_button.enabled = True
+        self.level_text.enabled = True
+        self.start_level_button.enabled = True
+        self.back_button.enabled = True
+
+    def hide(self):
+        self.enabled = False
+        self.left_button.enabled = False
+        self.right_button.enabled = False
+        self.level_text.enabled = False
+        self.start_level_button.enabled = False
+        self.back_button.enabled = False
+
+    def previous_level(self):
+        # Implement level navigation logic here
+        pass
+
+    def next_level(self):
+        # Implement level navigation logic here
+        pass
+
+    def start_game(self):
+        global game_ready, player_immobilized
+        self.hide()
+        self.main_menu.enable_menu_components(False)
+        self.main_menu.enabled = False
+        game_ready = True
+        player_immobilized = False
+
+    def back_to_menu(self):
+        self.hide()
+        self.main_menu.enable_menu_components(True)
+        
+class PauseMenu(Entity):
+    def __init__(self):
+        super().__init__(
+            model='Quad',
+            scale=(0.5, 1),
+            color=color.rgba(128, 128, 128, 0.5),
+            parent=camera.ui,
+            enabled=True
+        )
+        self.resume_button = Button(
+            text="Resume",
+            scale=(0.4, 0.1),
+            position=(0, 0),
+            parent=self,
+            on_click=self.resume_game
+        )
+
+    def rendermenu(self):
+        global player_immobilized
+        player_immobilized = True
+        self.enabled = True
+        self.resume_button.enabled = True
+
+    def disable(self):
+        global player_immobilized
+        self.enabled = False
+        self.resume_button.enabled = False
+        player_immobilized = False
+
+    def resume_game(self):
+        self.disable()
 
 class Tint(Entity):
     def __init__(self, opacity):
@@ -110,6 +289,8 @@ class Tint(Entity):
             )
         
 class BakedMeshAnimation(Entity):
+    playing = False  # <-- Add this line to ensure the attribute always exists
+
     def __init__(self, frame_files, frame_time=0.03, **kwargs):
         super().__init__(model=frame_files[0], **kwargs)
         self.frame_files = frame_files
@@ -130,7 +311,7 @@ class BakedMeshAnimation(Entity):
         self.finished_callback = finished_callback
 
     def update(self):
-        if not self.playing:
+        if not hasattr(self, 'playing') or not self.playing:
             return
         self.time_accum += time.dt
         if self.time_accum >= self.frame_time:
@@ -190,7 +371,7 @@ def respawn_anim():
 
 def input(key):
     global currentztelpos, rot_locked, camera_locked, player_immobilized
-    
+
     #reset - instakills and respawns player
     if key == 'r':
         if not death_anim.playing:
@@ -200,7 +381,14 @@ def input(key):
             rot_locked = True
         else:
             pass  # Ignore input if death animation is playing
-        
+    #pause menu
+    if key == 'tab':
+        if not hasattr(app, 'pause_menu'):
+            app.pause_menu = PauseMenu()
+        if app.pause_menu.enabled:
+            app.pause_menu.disable()
+        else:
+            app.pause_menu.rendermenu()
     #exit game
     if key == 'escape':
         quit()
@@ -237,24 +425,34 @@ def input(key):
 
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
-loading_text = Text("Loading...", origin=(0,0), scale=2, background=True)
-loading_text.enabled = True
+
+
+# set a function to prerender all variables
+# apply it to a thread and call the loading screen while it's running
+#upon finish, invoke finish_loading to hide the loading screen and set game_ready to True
+def prerendering():
+    global death_anim
+    # --- PRELOAD all animation frames to avoid first-run lag ---
+    for frame in death_anim_frames:
+        Entity(model=frame, enabled=False)  # Load and cache the model
+
+    death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1))
+    death_anim.disable()
+
+    # After all loading is done, schedule finish_loading
+    invoke(finish_loading, delay=0.1)
+
+loading_screen = LoadingScreen()  # Create and keep a reference
 
 def finish_loading():
-    global game_ready
-    loading_text.enabled = False
-    game_ready = True
+    global main_menu
+    loading_screen.disable()  # Disable the correct instance
+    #load main menu
+    main_menu = MainMenu()
+    main_menu.rendermenu()
 
-# --- PRELOAD all animation frames to avoid first-run lag ---
-for frame in death_anim_frames:
-    Entity(model=frame, enabled=False)  # Load and cache the model
-
-death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1))
-death_anim.disable()
-
-# After all loading is done, schedule finish_loading
-invoke(finish_loading, delay=0.1)
-
+renderthread = threading.Thread(target=prerendering, daemon=True)
+renderthread.start()
 
 
 fixed_dt = 1/60  # 60 updates per second
@@ -277,64 +475,58 @@ def update():
 
 def game_logic_step(dt):
     global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked
-    # Use dt instead of time.dt everywhere in your logic
-
+    
     if not player_immobilized:
+        # --- All movement and physics logic goes here ---
         player.x += move_x * dt
 
-    #camera return location
-    return_location = player.position + Vec3(-20, 20, -20)
+        # Jumping
+        if is_grounded and held_keys['space']:
+            velocity = 15  # Jump velocity
 
-    # Jumping
-    if is_grounded and held_keys['space'] and not player_immobilized:
-        velocity = 15  # Jump velocity
+        # Apply gravity
+        velocity += gravity * dt
+        player.y += velocity * dt
 
-    # Apply gravity
-    velocity += gravity * dt
-    player.y += velocity * dt
+        is_grounded = False
 
-    is_grounded = False
+        # --- Improved boxcast for highest ground point ---
+        boxcast_distance = 0.3
+        boxcast_origin = player.position + Vec3(0, -0.3, 0)
+        hit_info = boxcast(
+            origin=boxcast_origin,
+            direction=Vec3(0, -1, 0),
+            distance=boxcast_distance,
+            thickness=(player.scale_x, player.scale_z),
+            ignore=(player,),
+            debug=False
+        )
 
-    # --- Improved boxcast for highest ground point ---
-    # Cast a short box just below the player
-    boxcast_distance = 0.3  # Only check just below the player
-    boxcast_origin = player.position + Vec3(0, -0.3, 0)  # Slightly below feet
-    hit_info = boxcast(
-        origin=boxcast_origin,
-        direction=Vec3(0, -1, 0),
-        distance=boxcast_distance,
-        thickness=(player.scale_x, player.scale_z),
-        ignore=(player,),
-        debug=False # Hide the debugging hitbox
-    )
-
-    if hit_info.hit:
-        is_grounded = True
-        # Always set to the highest point found
-        player.y = hit_info.world_point.y + player.scale_y / 2 + 0.01  # 0.01 to avoid clipping
+        if hit_info.hit:
+            is_grounded = True
+            player.y = hit_info.world_point.y + player.scale_y / 2 + 0.01
+            velocity = 0
+    else:
+        # When immobilized, prevent all movement and physics
         velocity = 0
-        
+        is_grounded = False
+
     # --- Boxcast for wall collision (instakill) ---
-    # Add a secondary box collider at the top half of the player model (to avoid accidental floor collisions)
-    # Use to detect anything in front of the player in an incredibly short range. 
-    # This could be implemented by forming a boxcast at the player's xyz coordinates but limiting the scale to 
-    # x/2, y/2, z (where each coordinate value is derived from the playermodel)
-    # The boxcast collider volume could extend inside the player and not forwards from it
-    # Thus causing the boxcast to only trigger once the player actively intersects with a wall.
+    # (This can remain outside, so death still triggers when immobilized)
     deathboxcast_d = 0.5
     hit_info_death = boxcast(
-        origin=player.position + Vec3(0, 0.5, 0),  # Start from the top half of the player
-        direction=Vec3(1, 0, 0),  # Cast forward
+        origin=player.position + Vec3(0, 0.5, 0),
+        direction=Vec3(1, 0, 0),
         distance=deathboxcast_d,
         thickness=(player.scale_x / 2, player.scale_y / 2),
         ignore=(player,),
-        debug=False  # Hide the debugging hitbox
+        debug=False
     )
-    
+
     if hit_info_death.hit and not death_anim.playing:
         player.disable()
         death_anim.play(player.position, finished_callback=respawn_player)
-        camera_locked = True  # Lock camera when player dies
+        camera_locked = True
         rot_locked = True
 
     #safeground verification
@@ -344,6 +536,9 @@ def game_logic_step(dt):
         print("SafeGround collider is not set. Please check the collider settings.")
         
     # Camera movement logic (mouse controls)
+    #camera return location
+    return_location = player.position + Vec3(-20, 20, -20)
+    
     if not camera_locked:
         if mouse.left:
             camera_loc.x -= mouse.velocity[0] * return_speed * 1500 * time.dt
