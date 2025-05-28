@@ -28,7 +28,7 @@ player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), c
 
 #Collision map for the ground entity. 
 # Replace with an automated replacement of the model once level select screen is implemented and multiple maps are made        
-safeGround = Entity(model='MAP.obj', collider='mesh')
+safeGround = Entity(model='level2.obj', collider='mesh')
 safeGround.position = (52.5, -0.5, 0)
 safeGround.show_colliders = True
 safeGround.scale = (2, 1, 1.5)
