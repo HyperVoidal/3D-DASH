@@ -25,23 +25,56 @@ player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), c
 MAP = None
 MAPLIST = ["Level1", "Level2", "Level3", "Level4", "Level5"]
 GameMap = None
+largestx = 0
+minx = 0
+maxx = 0
 def renderMap(map_name):
-    global GameMap
+    global GameMap, largestx, minx, maxx
+    x_scale = 2
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
-    GameMap.position = (52.5, 0, 0)
-    GameMap.show_colliders = True
-    GameMap.scale = (2, 1, 1.5)
+    GameMap.scale = (x_scale, 1, 1.5)
     GameMap.rotation = (0, 270, 0)
+    # Temporarily position at origin to calculate min/max
+    GameMap.position = (0, -0.5, 0)
+    minx, maxx = calcpoints(GameMap)
+    level_length = maxx - minx
+    # Desired starting X position in world space
+    desired_start_x = 32.5
+    # Shift so minx aligns with desired_start_x
+    shift = desired_start_x - minx
+    GameMap.position = (shift, -0.5, 0)
+    # Recalculate minx, maxx after shifting
+    minx, maxx = calcpoints(GameMap)
     return GameMap
 
-
-
+def calcpoints(map):
+    from math import radians, cos, sin
+    vertexmap = map.model.vertices
+    rotated_vertices = []
+    angle = radians(map.rotation_y if hasattr(map, 'rotation_y') else map.rotation[1])
+    cos_a = cos(angle)
+    sin_a = sin(angle)
+    for v in vertexmap:
+        # Apply scale
+        scaled = Vec3(v[0] * map.scale_x, v[1] * map.scale_y, v[2] * map.scale_z)
+        # Apply Y rotation manually
+        x = scaled.x * cos_a - scaled.z * sin_a
+        z = scaled.x * sin_a + scaled.z * cos_a
+        rotated = Vec3(x, scaled.y, z)
+        # Apply position
+        world_pos = map.position + rotated
+        rotated_vertices.append(world_pos.x)
+    minx = min(rotated_vertices)
+    maxx = max(rotated_vertices)
+    return minx, maxx
+    
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
 velocity = 39.2  # Initial vertical velocity
 is_grounded = False
 move_x = 6 #movespeed
+playlock = False  # Add this global flag
 
 #Camera Positioning
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
@@ -87,16 +120,12 @@ walls = [
 
 # Create ground
 ground = [
-    Ground(position=(zTelPos[0]), scale=(60, 1, 2), color = col1),
-    Ground(position=(zTelPos[1]), scale=(60, 1, 2), color = col2),
-    Ground(position=(zTelPos[2]), scale=(60, 1, 2), color = col1),
-    Ground(position=(zTelPos[3]), scale=(60, 1, 2), color = col2),
-    Ground(position=(zTelPos[4]), scale=(60, 1, 2), color = col1)
+    Ground(position=(zTelPos[0]), scale=(65, 1, 2), color = col1),
+    Ground(position=(zTelPos[1]), scale=(65, 1, 2), color = col2),
+    Ground(position=(zTelPos[2]), scale=(65, 1, 2), color = col1),
+    Ground(position=(zTelPos[3]), scale=(65, 1, 2), color = col2),
+    Ground(position=(zTelPos[4]), scale=(65, 1, 2), color = col1)
 ]
-
-
-
-
 
 
 
@@ -138,8 +167,8 @@ class MainMenu(Entity):
         self.customise_back_button = None
 
     def rendermenu(self):
-        global player_immobilized
-        player_immobilized = True
+        global playlock
+        playlock = True
         self.enabled = True
         self.text = Text("Main Menu", origin=(0, -4), scale=2, background=True, parent=self)
         self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
@@ -190,6 +219,8 @@ class MainMenu(Entity):
 
     def quit_game(self):
         quit()
+
+# Comprises the level select screen, which allows players to choose a level from a list of maps.
 
 class LevelSelect(Entity):
     def __init__(self, main_menu):
@@ -266,7 +297,7 @@ class LevelSelect(Entity):
 
 
     def start_game(self):
-        global game_ready, player_immobilized, GameMap
+        global game_ready, playlock, GameMap
         self.MAP = self.MAPLIST[(int(self.mapcount) -1)]
         print(self.MAP)
         # Render the selected map before starting the game
@@ -277,14 +308,40 @@ class LevelSelect(Entity):
         self.main_menu.enable_menu_components(False)
         self.main_menu.enabled = False
         game_ready = True
-        player_immobilized = False
+        playlock = False
 
     def back_to_menu(self):
         self.hide()
         self.main_menu.enable_menu_components(True)
-        
+
+# Multipurpose class for level progress tracking
+# Detects the total size of level, compares player progress through position, and updates the level progress file
+# Also provides a UI for after-death to show furthest progress
+# Also Also renders a progressbar for level movement and provides a percentage value
+class LevelProgress(Entity):
+    def __init__(self):
+        super().__init__()
+        global GameMap, minx, maxx
+        self.gamemap = GameMap
+        self.percentagecompletion = 0 #default state for level start
+        self.maxX = maxx
+        self.minX = minx
+
+    def findpercentage(self):
+        #pull tuple returns from calcpoints using GameMap as the interpreted vertices
+        # Calculate progress as a value between 0 and 1
+        progress = (player.x - self.minX) / (self.maxX - self.minX) if self.maxX != self.minX else 0
+        progress = max(0, min(1, progress))  # Clamp to [0, 1]
+        self.percentagecompletion = round(progress * 100, 1)
+        print(f"Progress: {self.percentagecompletion}%")
+
+
+    
+    def percentagebar(self):
+        pass
+
 def reset_game_state():
-    global velocity, currentztelpos, camera_locked, rot_locked, player_immobilized, game_ready, accumulator, GameMap
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap
     # Reset player state
     player.position = Vec3(0, 30, 0)
     player.z = zTelPos[2][2]
@@ -298,7 +355,7 @@ def reset_game_state():
     # Reset flags
     camera_locked = False
     rot_locked = False
-    player_immobilized = False
+    playlock = False
     game_ready = False
     accumulator = 0
     LevelSelect.mapcount = 0
@@ -341,16 +398,16 @@ class PauseMenu(Entity):
         )
 
     def rendermenu(self):
-        global player_immobilized
-        player_immobilized = True
+        global playlock
+        playlock = True
         self.enabled = True
         self.resume_button.enabled = True
 
     def disable(self):
-        global player_immobilized
+        global playlock
         self.enabled = False
         self.resume_button.enabled = False
-        player_immobilized = False
+        playlock = False
 
     def resume_game(self):
         self.disable()
@@ -403,10 +460,8 @@ class BakedMeshAnimation(Entity):
                 if self.finished_callback:
                     self.finished_callback()
 
-player_immobilized = False  # Add this global flag
-
 def respawn_player():
-    global velocity, currentztelpos, camera_locked, rot_locked, player_immobilized
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock
     player.position = Vec3(0, 5, 0)
     player.movement = Vec3(0, 10, 0) 
     velocity = 0
@@ -415,7 +470,7 @@ def respawn_player():
     player.enable()
     camera_locked = False  # Unlock camera on respawn
     rot_locked = False
-    player_immobilized = False  # Allow movement after respawn animation
+    playlock = False  # Allow movement after respawn animation
 
 def checkrotation(from_pos, to_pos):
     temp = Entity(position=from_pos)
@@ -425,10 +480,10 @@ def checkrotation(from_pos, to_pos):
     return rot
 
 def respawn_anim():
-    global camera_locked, rot_locked, player_immobilized
+    global camera_locked, rot_locked, playlock
     camera_locked = True
     rot_locked = True
-    player_immobilized = True  # Immobilize player during respawn animation
+    playlock = True  # Immobilize player during respawn animation
     deathpos = camera.position
     camerarot = camera.rotation
     playercampos = player.position + Vec3(-20, 20, -20)
@@ -445,10 +500,10 @@ def respawn_anim():
         distance(camera.rotation, return_rotation) < 0.5):
         camera_locked = False
         rot_locked = False
-        player_immobilized = False  # Re-enable player movement
+        playlock = False  # Re-enable player movement
 
 def input(key):
-    global currentztelpos, rot_locked, camera_locked, player_immobilized
+    global currentztelpos, rot_locked, camera_locked, playlock
     # ---- Independent Controls ----
     #exit game
     if key == 'escape':
@@ -472,7 +527,7 @@ def input(key):
 
         
     #main controls: d for left and a for right
-    if game_ready and not player_immobilized:
+    if game_ready and not playlock:
         
         #reset - instakills and respawns player
         if key == 'r':
@@ -563,7 +618,7 @@ def update():
 def game_logic_step(dt):
     global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked
     
-    if not player_immobilized:
+    if not playlock:
         # --- All movement and physics logic goes here ---
         player.x += move_x * dt
 
@@ -640,6 +695,8 @@ def game_logic_step(dt):
             camera.rotation = camera_rot
     if not rot_locked:
         camera.look_at(player.position)
+    
+    LevelProgress().findpercentage()
 
     
 app.run()

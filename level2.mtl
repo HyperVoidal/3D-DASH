@@ -1,7 +1,7 @@
-# Blender 3.3.1 MTL File: 'level2.blend'
+# Blender 3.3.1 MTL File: 'None'
 # www.blender.org
 
-newmtl INSTAKILL
+newmtl INSTAKILL.001
 Ns 250.000000
 Ka 1.000000 1.000000 1.000000
 Kd 0.800000 0.000000 0.003544
@@ -11,7 +11,7 @@ Ni 1.500000
 d 1.000000
 illum 2
 
-newmtl SAFEGROUND
+newmtl SAFEGROUND.001
 Ns 250.000000
 Ka 1.000000 1.000000 1.000000
 Kd 0.000000 0.800000 0.011818
