@@ -16,23 +16,26 @@ app = Ursina()
 camera_locked = False
 rot_locked = False
 
-
-
-
 # --- PRE-APP SETUP AND VARIABLES ---
 # Player entity with a collider
 player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 #rgba value is set to the blender colour of the player model
 
+#list of maps
+MAP = None
+MAPLIST = ["Level1", "Level2", "Level3", "Level4", "Level5"]
+GameMap = None
+def renderMap(map_name):
+    global GameMap
+    GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
+    GameMap.position = (52.5, 0, 0)
+    GameMap.show_colliders = True
+    GameMap.scale = (2, 1, 1.5)
+    GameMap.rotation = (0, 270, 0)
+    return GameMap
 
 
-#Collision map for the ground entity. 
-# Replace with an automated replacement of the model once level select screen is implemented and multiple maps are made        
-safeGround = Entity(model='level2.obj', collider='mesh')
-safeGround.position = (52.5, -0.5, 0)
-safeGround.show_colliders = True
-safeGround.scale = (2, 1, 1.5)
-safeGround.rotation = (0, 270, 0)
+
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
@@ -198,16 +201,36 @@ class LevelSelect(Entity):
             enabled=False
         )
         self.main_menu = main_menu
-        self.left_button = Button(text="Left", scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
-        self.right_button = Button(text="Right", scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=self.next_level)
-        self.level_text = Text("Level 1: The Beginning", origin=(0, 0.5), scale=2, background=True, parent=self)
+        self.MAPLIST = MAPLIST
+        self.MAP = self.MAPLIST[0]
+        self.mapcount = 1 # Initialise map count to 0
+        self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
+        self.left_arrow = Entity(
+            model='arrowNOBG.obj',
+            scale=(0.03, 0.03, 0.03),  # Adjust as needed
+            parent=self.left_button,
+            position=(0, 0, -0.01),    # Slightly in front of the button
+            rotation=(90, 0, 0),       # Mirror horizontally (Y axis)
+            color=color.white,
+            texture=None
+        )
+
+        self.right_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=self.next_level)
+        self.right_arrow = Entity(
+            model='arrowNOBG.obj',
+            scale=(0.03, 0.03, 0.03),  # Adjust as needed
+            parent=self.right_button,
+            position=(0, 0, -0.01),     # Slightly in front of the button
+            rotation=(90, 180, 0),
+            color=color.white,
+            texture=None
+        )
+        self.level_text = Text(f"Level {self.mapcount}", origin=(0, 0.5), scale=2, background=True, parent=self)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
         self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
         self.score = None # Placeholder for distance value, implement from json file when implemented
+        self.PlayerMap = None
         self.hide()
-    
-    def level(self):
-        self.level_text = Text
 
     def show(self):
         self.enabled = True
@@ -226,15 +249,30 @@ class LevelSelect(Entity):
         self.back_button.enabled = False
 
     def previous_level(self):
-        # Implement level navigation logic here
-        pass
-
+        if self.mapcount == 1:
+            self.mapcount = 5
+        else:
+            self.mapcount -= 1
+        #update level text
+        self.level_text.text = f"Level {self.mapcount}"
+        
     def next_level(self):
-        # Implement level navigation logic here
-        pass
+        if self.mapcount == len(self.MAPLIST):
+            self.mapcount = 1
+        else:
+            self.mapcount += 1
+        #update level text  
+        self.level_text.text = f"Level {self.mapcount}"
+
 
     def start_game(self):
-        global game_ready, player_immobilized
+        global game_ready, player_immobilized, GameMap
+        self.MAP = self.MAPLIST[(int(self.mapcount) -1)]
+        print(self.MAP)
+        # Render the selected map before starting the game
+        if GameMap:
+            GameMap.disable()
+        GameMap = renderMap(self.MAP)
         self.hide()
         self.main_menu.enable_menu_components(False)
         self.main_menu.enabled = False
@@ -245,11 +283,37 @@ class LevelSelect(Entity):
         self.hide()
         self.main_menu.enable_menu_components(True)
         
+def reset_game_state():
+    global velocity, currentztelpos, camera_locked, rot_locked, player_immobilized, game_ready, accumulator, GameMap
+    # Reset player state
+    player.position = Vec3(0, 30, 0)
+    player.z = zTelPos[2][2]
+    velocity = 39.2
+    currentztelpos = 2
+    player.enable()
+    # Reset camera
+    camera.position = Vec3(-20, 20, -20)
+    camera.rotation = Vec3(0, 45, 0)
+    camera.look_at(player.position)
+    # Reset flags
+    camera_locked = False
+    rot_locked = False
+    player_immobilized = False
+    game_ready = False
+    accumulator = 0
+    LevelSelect.mapcount = 0
+    LevelSelect.MAP = None
+    if GameMap:
+        GameMap.remove()  # <-- Use remove() instead of destroy()
+        GameMap = None
+    # Show main menu
+    main_menu.rendermenu()
+
 class PauseMenu(Entity):
     def __init__(self):
         super().__init__(
             model='Quad',
-            scale=(0.5, 1),
+            scale=(0.5, 0.8),
             color=color.rgba(128, 128, 128, 0.5),
             parent=camera.ui,
             enabled=True
@@ -257,9 +321,23 @@ class PauseMenu(Entity):
         self.resume_button = Button(
             text="Resume",
             scale=(0.4, 0.1),
-            position=(0, 0),
+            position=(0, 0.25),
             parent=self,
             on_click=self.resume_game
+        )
+        self.mainmenubutton = Button(
+            text="Main Menu",
+            scale=(0.4, 0.1),
+            position=(0, 0),
+            parent=self,
+            on_click=lambda: (self.disable(), reset_game_state())
+        )
+        self.exittodesktop_button = Button(
+            text="Exit to Desktop",
+            scale=(0.4, 0.1),
+            position=(0, -0.25),
+            parent=self,
+            on_click=quit
         )
 
     def rendermenu(self):
@@ -371,24 +449,7 @@ def respawn_anim():
 
 def input(key):
     global currentztelpos, rot_locked, camera_locked, player_immobilized
-
-    #reset - instakills and respawns player
-    if key == 'r':
-        if not death_anim.playing:
-            player.disable()
-            death_anim.play(player.position, finished_callback=respawn_player)
-            camera_locked = True  # Lock camera when player dies
-            rot_locked = True
-        else:
-            pass  # Ignore input if death animation is playing
-    #pause menu
-    if key == 'tab':
-        if not hasattr(app, 'pause_menu'):
-            app.pause_menu = PauseMenu()
-        if app.pause_menu.enabled:
-            app.pause_menu.disable()
-        else:
-            app.pause_menu.rendermenu()
+    # ---- Independent Controls ----
     #exit game
     if key == 'escape':
         quit()
@@ -397,29 +458,54 @@ def input(key):
     if key == 'f':
         # Toggle fullscreen mode
         window.fullscreen = not window.fullscreen
+    
+    # ---- Must be in game ----
+    #pause menu
+    if game_ready:
+        if key == 'tab':
+            if not hasattr(app, 'pause_menu'):
+                app.pause_menu = PauseMenu()
+            if app.pause_menu.enabled:
+                app.pause_menu.disable()
+            else:
+                app.pause_menu.rendermenu()
+
         
     #main controls: d for left and a for right
-    if key == 'd':
-        if currentztelpos == 4:
-            # Create a semi-transparent red tint
-            tint = Tint(opacity=0.2)
-            camera.shake(duration=0.5)
-            invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
-        else:
-            currentztelpos += 1
-        # position shifts one lane further away from the camera
-        # if at the furthest possible lane, instead stay in the same place
-    if key == 'a':
-        if currentztelpos == 0:
-            # Create a semi-transparent red tint
-            tint = Tint(opacity=0.2)
-            camera.shake(duration=0.5)
-            invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
-        else:
-            currentztelpos -= 1
-        # position shifts one lane closer to camera
-        # if at the closest possible lane, instead stay in the same place
-    player.z = zTelPos[currentztelpos][2]
+    if game_ready and not player_immobilized:
+        
+        #reset - instakills and respawns player
+        if key == 'r':
+            if not death_anim.playing:
+                player.disable()
+                death_anim.play(player.position, finished_callback=respawn_player)
+                camera_locked = True  # Lock camera when player dies
+                rot_locked = True
+            else:
+                pass  # Ignore input if death animation is playing
+            
+        if key == 'd':
+            if currentztelpos == 4:
+                # Create a semi-transparent red tint
+                tint = Tint(opacity=0.2)
+                camera.shake(duration=0.5)
+                invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
+            else:
+                currentztelpos += 1
+            # position shifts one lane further away from the camera
+            # if at the furthest possible lane, instead stay in the same place
+        if key == 'a':
+            if currentztelpos == 0:
+                # Create a semi-transparent red tint
+                tint = Tint(opacity=0.2)
+                camera.shake(duration=0.5)
+                invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
+            else:
+                currentztelpos -= 1
+            # position shifts one lane closer to camera
+            # if at the closest possible lane, instead stay in the same place
+        player.z = zTelPos[currentztelpos][2]
+    
 
 # --- Prerender Animations before game start ---
 
@@ -434,7 +520,8 @@ def prerendering():
     global death_anim
     # --- PRELOAD all animation frames to avoid first-run lag ---
     for frame in death_anim_frames:
-        Entity(model=frame, enabled=False)  # Load and cache the model
+        e = Entity(model=frame, enabled=True)
+        invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
 
     death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1))
     death_anim.disable()
@@ -529,11 +616,11 @@ def game_logic_step(dt):
         camera_locked = True
         rot_locked = True
 
-    #safeground verification
-    if safeGround.collider:
+    #Map Integrity Verification
+    if GameMap.collider:
         pass
     else:
-        print("SafeGround collider is not set. Please check the collider settings.")
+        print("Game MAP collider is not set. Please check the collider settings.")
         
     # Camera movement logic (mouse controls)
     #camera return location
