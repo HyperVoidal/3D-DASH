@@ -1,33 +1,55 @@
 from ursina import *
-import math
+from math import radians, cos, sin
 from ursina import Button 
 from direct.actor.Actor import Actor
 import time
 import threading 
+import shutil
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+#cache clearing function - clean up the compressed models folder on startup
+def cache_clear(folder):
+    try:
+        shutil.rmtree(folder)
+    except:
+        print(f"WARNING\nCache clearing error detected - please restart the game!")
+
+cache_clear(folder="models_compressed")
 
 #Loading screen asset caller - used later
 game_ready = False
-# Cap fps to 60 to avoid frame stuttering on heavy model rendering
-# Game objects are currently dependent on frame rate so capping it to 60 will help with consistency across devices and parity while developing on different devices
 window.vsync = True
-window.fps_limit = 60
-application.fps_limit = 60
+window.icon = "window_icon.ico"
+window.title = "3D DASH"
 app = Ursina()
-camera_locked = False
-rot_locked = False
+
+
+#Window Variables
+#window.borderless = True
+#monitorlist = window.monitors
+#window.size = (1280, 720)
+
 
 # --- PRE-APP SETUP AND VARIABLES ---
+
+# Model Loading
 # Player entity with a collider
-player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 #rgba value is set to the blender colour of the player model
+player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
+# Prepare the list of animation frames
+death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
 
 #list of maps
 MAP = None
-MAPLIST = ["Level1", "Level2", "Level3", "Level4", "Level5"]
+MAPLIST = ["Level1", "Level2"]
 GameMap = None
 largestx = 0
 minx = 0
 maxx = 0
+
+#ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
     global GameMap, largestx, minx, maxx
     x_scale = 2
@@ -37,7 +59,6 @@ def renderMap(map_name):
     # Temporarily position at origin to calculate min/max
     GameMap.position = (0, -0.5, 0)
     minx, maxx = calcpoints(GameMap)
-    level_length = maxx - minx
     # Desired starting X position in world space
     desired_start_x = 32.5
     # Shift so minx aligns with desired_start_x
@@ -47,9 +68,8 @@ def renderMap(map_name):
     minx, maxx = calcpoints(GameMap)
     return GameMap
 
-def calcpoints(map):
-    from math import radians, cos, sin
-    vertexmap = map.model.vertices
+def calcpoints(map):        
+    vertexmap = map.combine().vertices
     rotated_vertices = []
     angle = radians(map.rotation_y if hasattr(map, 'rotation_y') else map.rotation[1])
     cos_a = cos(angle)
@@ -74,7 +94,8 @@ gravity = -39.2  # Gravity acceleration
 velocity = 39.2  # Initial vertical velocity
 is_grounded = False
 move_x = 6 #movespeed
-playlock = False  # Add this global flag
+playlock = False
+paused = False
 
 #Camera Positioning
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
@@ -83,6 +104,8 @@ camera.look_at(player.position) # Initial look at
 return_rotation = Vec3(0, 45, 0)
 return_speed = 5 #how fast the camera returns to equilibrium position
 camera_loc = player.position + Vec3(-20, 20, -20)
+camera_locked = False
+rot_locked = False
 currentztelpos = 2
 
 
@@ -136,15 +159,33 @@ class LoadingScreen(Entity):
         super().__init__(
             model='Quad',
             scale=(2, 2),
-            color=color.rgba(0, 0, 0, 0.5),  # Semi-transparent black
+            color=color.rgba(0, 0, 0, 1),
             parent=camera.ui,
             enabled=True
         )
-        self.text = Text("Loading...", origin=(0, 0), scale=2, background=True, parent=self)
-    
+        # Create background first, with lower z
+        self.background = Entity(
+            model='Quad',
+            scale=(10, 10),
+            color=color.black,
+            position=(0, 0, -2),  # Lower z to be behind text
+            parent=self,
+            enabled=True
+        )
+        # Then create text
+        self.text = Text(
+        "Loading...",
+        origin=(0, 0),
+        color=color.white,
+        scale=2,
+        background=False,
+        parent=self
+        )
+
     def disable(self):
         self.enabled = False
         self.text.enabled = False
+        self.background.enabled = False
         
 # Run main menu before ALMOST everything else
 # Main menu should freeze player and then render an interactive menu with mouse clickable options for 
@@ -234,14 +275,19 @@ class LevelSelect(Entity):
         self.main_menu = main_menu
         self.MAPLIST = MAPLIST
         self.MAP = self.MAPLIST[0]
-        self.mapcount = 1 # Initialise map count to 0
+        self.mapcount = 1
+        
+        #cmap = 'hsv'
+        #plt.Normalize([0, (len(MAPLIST))])
+        
+        
         self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
         self.left_arrow = Entity(
             model='arrowNOBG.obj',
-            scale=(0.03, 0.03, 0.03),  # Adjust as needed
+            scale=(0.03, 0.03, 0.03),
             parent=self.left_button,
-            position=(0, 0, -0.01),    # Slightly in front of the button
-            rotation=(90, 0, 0),       # Mirror horizontally (Y axis)
+            position=(0, 0, -0.01),
+            rotation=(90, 0, 0),
             color=color.white,
             texture=None
         )
@@ -249,18 +295,30 @@ class LevelSelect(Entity):
         self.right_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=self.next_level)
         self.right_arrow = Entity(
             model='arrowNOBG.obj',
-            scale=(0.03, 0.03, 0.03),  # Adjust as needed
+            scale=(0.03, 0.03, 0.03),  
             parent=self.right_button,
-            position=(0, 0, -0.01),     # Slightly in front of the button
+            position=(0, 0, -0.01),    
             rotation=(90, 180, 0),
             color=color.white,
             texture=None
         )
+        
+        """ self.colorbg = Entity(
+            model='Quad',
+            scale=(0.4, 0.1),
+            position=(0, 0),
+            parent=self,
+            color=(
+                
+            )
+        ) """
+        
         self.level_text = Text(f"Level {self.mapcount}", origin=(0, 0.5), scale=2, background=True, parent=self)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
         self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
-        self.score = None # Placeholder for distance value, implement from json file when implemented
+        self.score = None # Placeholder for distance value, work with json file when implemented
         self.PlayerMap = None
+        self.colorscale = None
         self.hide()
 
     def show(self):
@@ -297,13 +355,18 @@ class LevelSelect(Entity):
 
 
     def start_game(self):
-        global game_ready, playlock, GameMap
+        global game_ready, playlock, GameMap, minx, maxx, levelprog
         self.MAP = self.MAPLIST[(int(self.mapcount) -1)]
-        print(self.MAP)
         # Render the selected map before starting the game
         if GameMap:
             GameMap.disable()
+            destroy(GameMap)
+            GameMap = None
         GameMap = renderMap(self.MAP)
+        # Update level progress bar bounds
+        levelprog.gamemap = GameMap
+        levelprog.minX = minx
+        levelprog.maxX = maxx
         self.hide()
         self.main_menu.enable_menu_components(False)
         self.main_menu.enabled = False
@@ -323,22 +386,56 @@ class LevelProgress(Entity):
         super().__init__()
         global GameMap, minx, maxx
         self.gamemap = GameMap
-        self.percentagecompletion = 0 #default state for level start
+        #default state for level start
+        self.percentagecompletion = 0 
         self.maxX = maxx
         self.minX = minx
-
-    def findpercentage(self):
-        #pull tuple returns from calcpoints using GameMap as the interpreted vertices
-        # Calculate progress as a value between 0 and 1
-        progress = (player.x - self.minX) / (self.maxX - self.minX) if self.maxX != self.minX else 0
-        progress = max(0, min(1, progress))  # Clamp to [0, 1]
-        self.percentagecompletion = round(progress * 100, 1)
-        print(f"Progress: {self.percentagecompletion}%")
-
-
+        #create percentage bar entity ONCE
+        self.BarFrame = Entity(
+            model = 'ProgressBar.obj',
+            scale=(0.09, 0.03, 0.03),
+            position=(0, 0.45, 0),
+            rotation=(90, 0, 0),
+            parent=camera.ui,
+            color=color.white,
+            texture=None,
+            enabled=True
+        )
+        self.loadingbar = Entity(
+            model = 'cube',
+            position = (0, 0.45, 0),
+            rotation = (90, 0, 0),
+            color=color.orange,
+            parent=self.BarFrame,
+            enabled=True
+        )
+        self.textpercent = Text(
+            text="0.0%",
+            parent=camera.ui,
+            position=(0.45, 0.46, 0),
+            color=color.black,
+            enabled=True
+        )
     
     def percentagebar(self):
-        pass
+        # Only X scale changes, Y and Z should stay visible
+        x_scaling = 9.95 * (self.percentagecompletion/100)
+        self.loadingbar.scale = (x_scaling, 1.2, 1.2)
+        self.loadingbar.x = -4.95 + x_scaling / 2
+
+    def findpercentage(self):
+        if not death_anim.playing:
+            #pull tuple returns from calcpoints using GameMap as the interpreted vertices
+            # Calculate progress as a value between 0 and 1
+            progress = (player.x - self.minX) / (self.maxX - self.minX) if self.maxX != self.minX else 0
+            progress = max(0, min(1, progress))  # Clamp to [0, 1]
+            self.percentagecompletion = round(progress * 100, 1)
+            self.textpercent.text = f"{self.percentagecompletion}%"
+            self.percentagebar()
+        
+
+        
+
 
 def reset_game_state():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap
@@ -361,7 +458,8 @@ def reset_game_state():
     LevelSelect.mapcount = 0
     LevelSelect.MAP = None
     if GameMap:
-        GameMap.remove()  # <-- Use remove() instead of destroy()
+        GameMap.disable()
+        destroy(GameMap)
         GameMap = None
     # Show main menu
     main_menu.rendermenu()
@@ -398,16 +496,18 @@ class PauseMenu(Entity):
         )
 
     def rendermenu(self):
-        global playlock
+        global playlock, paused
         playlock = True
         self.enabled = True
         self.resume_button.enabled = True
+        paused = True
 
     def disable(self):
-        global playlock
+        global playlock, paused
         self.enabled = False
         self.resume_button.enabled = False
         playlock = False
+        paused = False
 
     def resume_game(self):
         self.disable()
@@ -461,16 +561,18 @@ class BakedMeshAnimation(Entity):
                     self.finished_callback()
 
 def respawn_player():
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused
     player.position = Vec3(0, 5, 0)
     player.movement = Vec3(0, 10, 0) 
     velocity = 0
     player.z = zTelPos[2][2]
     currentztelpos = 2
-    player.enable()
-    camera_locked = False  # Unlock camera on respawn
-    rot_locked = False
-    playlock = False  # Allow movement after respawn animation
+    # Allow movement after respawn animation - circumvents pausing error during death animation
+    if not paused:
+        player.enable()
+        camera_locked = False
+        rot_locked = False
+        playlock = False  
 
 def checkrotation(from_pos, to_pos):
     temp = Entity(position=from_pos)
@@ -561,13 +663,6 @@ def input(key):
             # if at the closest possible lane, instead stay in the same place
         player.z = zTelPos[currentztelpos][2]
     
-
-# --- Prerender Animations before game start ---
-
-# Prepare the list of animation frames
-death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
-
-
 # set a function to prerender all variables
 # apply it to a thread and call the loading screen while it's running
 #upon finish, invoke finish_loading to hide the loading screen and set game_ready to True
@@ -585,6 +680,7 @@ def prerendering():
     invoke(finish_loading, delay=0.1)
 
 loading_screen = LoadingScreen()  # Create and keep a reference
+levelprog = LevelProgress()
 
 def finish_loading():
     global main_menu
@@ -632,7 +728,7 @@ def game_logic_step(dt):
 
         is_grounded = False
 
-        # --- Improved boxcast for highest ground point ---
+        # --- Improved boxcast for highest ground point; this is the under-player cast---
         boxcast_distance = 0.3
         boxcast_origin = player.position + Vec3(0, -0.3, 0)
         hit_info = boxcast(
@@ -647,6 +743,23 @@ def game_logic_step(dt):
         if hit_info.hit:
             is_grounded = True
             player.y = hit_info.world_point.y + player.scale_y / 2 + 0.01
+            velocity = 0
+            
+        # --- Secondary box cast for collision correction - orients player during clipping to avoid instakill ---
+        castdist = 0.3
+        castorig = player.position + Vec3(0, 0, 0)
+        hit_info = boxcast(
+            origin=castorig,
+            direction=Vec3(0, -1, 0),
+            distance=castdist,
+            thickness=(player.scale_x, player.scale_z),
+            ignore=(player,),
+            debug=True
+        )
+
+        if hit_info.hit:
+            is_grounded = True
+            player.y += 0.3
             velocity = 0
     else:
         # When immobilized, prevent all movement and physics
@@ -696,7 +809,7 @@ def game_logic_step(dt):
     if not rot_locked:
         camera.look_at(player.position)
     
-    LevelProgress().findpercentage()
+    levelprog.findpercentage()
 
     
 app.run()

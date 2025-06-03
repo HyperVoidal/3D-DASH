@@ -1,0 +1,3 @@
+Required imports:
+Ursina Engine (Latest version)
+Panda3D (If not imported through Ursina automatically)
