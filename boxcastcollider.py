@@ -6,7 +6,9 @@ import time
 import threading 
 import shutil
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
+import json
 
 
 #cache clearing function - clean up the compressed models folder on startup
@@ -41,13 +43,20 @@ player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), c
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
 
-#list of maps
+#Import Json file
+with open ("level_data.json", "r") as f:
+    data = json.load(f)
+
+#Map Data
+MAPLIST = []
+for key in data:
+    MAPLIST.append(str(key))
 MAP = None
-MAPLIST = ["Level1", "Level2"]
 GameMap = None
 largestx = 0
 minx = 0
 maxx = 0
+current_mapcount = 1
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
@@ -87,6 +96,18 @@ def calcpoints(map):
     minx = min(rotated_vertices)
     maxx = max(rotated_vertices)
     return minx, maxx
+
+def get_hsv_color(fraction):
+    """
+    Map a value between 0 and 1 to an RGB color from the hsv colormap.
+    :param fraction: float between 0 and 1
+    :return: (r, g, b) tuple, each in range [0, 1]
+    """
+    cmap = plt.get_cmap('hsv')
+    norm = mpl.colors.Normalize(vmin=0, vmax=1)
+    rgba = cmap(norm(fraction))
+    rgb = [round(float(x), 3) for x in rgba[:3]]  # Convert to float and round
+    return rgb # Return only RGB, ignore alpha
     
 
 # Gravity and movement variables
@@ -265,20 +286,17 @@ class MainMenu(Entity):
 
 class LevelSelect(Entity):
     def __init__(self, main_menu):
-        super().__init__(
-            model='Quad',
-            scale=(2, 2),
-            color=color.rgba(0, 255, 0, 1),  # Green background
-            parent=camera.ui,
-            enabled=False
-        )
         self.main_menu = main_menu
         self.MAPLIST = MAPLIST
         self.MAP = self.MAPLIST[0]
-        self.mapcount = 1
-        
-        #cmap = 'hsv'
-        #plt.Normalize([0, (len(MAPLIST))])
+        self.mapcount = 1  
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgb(*get_hsv_color(int(self.mapcount) / len(self.MAPLIST))),
+            parent=camera.ui,
+            enabled=False
+        )
         
         
         self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
@@ -302,24 +320,56 @@ class LevelSelect(Entity):
             color=color.white,
             texture=None
         )
+        self.levelperc = Entity(
+            model = 'ProgressBar.obj',
+            scale=(0.09, 0.03, 0.03),
+            position=(0, -0.075, -0.1),
+            rotation=(90, 0, 0),
+            parent=camera.ui,
+            color=color.white,
+            texture=None,
+            enabled=True
+        )
         
-        """ self.colorbg = Entity(
-            model='Quad',
-            scale=(0.4, 0.1),
-            position=(0, 0),
-            parent=self,
-            color=(
-                
-            )
-        ) """
+        self.levelcomp = Entity(
+            model = 'cube',
+            position = (0, 0.45, 0),
+            rotation = (90, 0, 0),
+            color=color.orange,
+            parent=self.levelperc,
+            enabled=True
+        )
         
-        self.level_text = Text(f"Level {self.mapcount}", origin=(0, 0.5), scale=2, background=True, parent=self)
+        self.levelpercentage = Text(text="0.0%", parent=camera.ui, position=(0, -0.07, -0.1), color=color.black, enabled=True)
+        
+        # Level data loading
+        with open ("level_data.json", "r") as f:
+            data = json.load(f)
+        
+        levelpercent = data[f"Level{self.mapcount}"]
+        x_scaling = 9.95 * (float(levelpercent)/100)
+        self.levelcomp.scale = (x_scaling, 1.2, 1.2)
+        self.levelcomp.x = -4.95 + x_scaling / 2
+        self.levelpercentage.text = (f"{str(levelpercent)} %")
+        
+        self.level_text = Text(f"Level {self.mapcount}", position=(0, 0.04, 0), origin=(0, 0.5), scale=2, background=True, parent=self, color=color.black)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
         self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
         self.score = None # Placeholder for distance value, work with json file when implemented
         self.PlayerMap = None
         self.colorscale = None
         self.hide()
+    
+    def updatelevelperc(self):
+        # Level data loading
+        with open ("level_data.json", "r") as f:
+            data = json.load(f)
+        
+        levelpercent = data[f"Level{self.mapcount}"]
+        x_scaling = 9.95 * (float(levelpercent)/100)
+        self.levelcomp.scale = (x_scaling, 1.2, 1.2)
+        self.levelcomp.x = -4.95 + x_scaling / 2
+        self.levelpercentage.text = (f"{str(levelpercent)} %")
 
     def show(self):
         self.enabled = True
@@ -328,6 +378,9 @@ class LevelSelect(Entity):
         self.level_text.enabled = True
         self.start_level_button.enabled = True
         self.back_button.enabled = True
+        self.levelperc.enabled = True
+        self.levelcomp.enabled = True
+        self.levelpercentage.enabled = True
 
     def hide(self):
         self.enabled = False
@@ -336,14 +389,21 @@ class LevelSelect(Entity):
         self.level_text.enabled = False
         self.start_level_button.enabled = False
         self.back_button.enabled = False
+        self.levelperc.enabled = False
+        self.levelcomp.enabled = False
+        self.levelpercentage.enabled = False
 
     def previous_level(self):
         if self.mapcount == 1:
-            self.mapcount = 5
+            self.mapcount = len(self.MAPLIST)
         else:
             self.mapcount -= 1
         #update level text
         self.level_text.text = f"Level {self.mapcount}"
+        
+        self.color=color.rgb(*get_hsv_color(int(self.mapcount) / len(self.MAPLIST)))
+        
+        self.updatelevelperc()
         
     def next_level(self):
         if self.mapcount == len(self.MAPLIST):
@@ -352,11 +412,14 @@ class LevelSelect(Entity):
             self.mapcount += 1
         #update level text  
         self.level_text.text = f"Level {self.mapcount}"
-
+        self.color=color.rgb(*get_hsv_color(int(self.mapcount) / len(self.MAPLIST)))
+        
+        self.updatelevelperc()
 
     def start_game(self):
-        global game_ready, playlock, GameMap, minx, maxx, levelprog
+        global game_ready, playlock, GameMap, minx, maxx, levelprog, current_mapcount
         self.MAP = self.MAPLIST[(int(self.mapcount) -1)]
+        current_mapcount = self.mapcount
         # Render the selected map before starting the game
         if GameMap:
             GameMap.disable()
@@ -432,10 +495,8 @@ class LevelProgress(Entity):
             self.percentagecompletion = round(progress * 100, 1)
             self.textpercent.text = f"{self.percentagecompletion}%"
             self.percentagebar()
-        
-
-        
-
+            
+            
 
 def reset_game_state():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap
@@ -463,6 +524,7 @@ def reset_game_state():
         GameMap = None
     # Show main menu
     main_menu.rendermenu()
+    
 
 class PauseMenu(Entity):
     def __init__(self):
@@ -779,10 +841,22 @@ def game_logic_step(dt):
     )
 
     if hit_info_death.hit and not death_anim.playing:
+        #Save highscore
+        with open ('level_data.json', 'r') as file:
+            data = json.load(file)
+        if float(data[f"Level{current_mapcount}"]) < float(levelprog.percentagecompletion):
+            data[f"Level{current_mapcount}"] = (f"{levelprog.percentagecompletion}")
+            with open ('level_data.json', 'w') as file:
+                json.dump(data, file)
+        else:
+            pass
+        
+        #Trigger death animation
         player.disable()
         death_anim.play(player.position, finished_callback=respawn_player)
         camera_locked = True
         rot_locked = True
+        
 
     #Map Integrity Verification
     if GameMap.collider:
