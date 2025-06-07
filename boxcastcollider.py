@@ -7,7 +7,6 @@ import threading
 import shutil
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import numpy as np
 import json
 
 
@@ -57,6 +56,7 @@ largestx = 0
 minx = 0
 maxx = 0
 current_mapcount = 1
+LARGESTX = 0
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
@@ -75,9 +75,10 @@ def renderMap(map_name):
     GameMap.position = (shift, -0.5, 0)
     # Recalculate minx, maxx after shifting
     minx, maxx = calcpoints(GameMap)
+    LARGESTX = maxx
     return GameMap
 
-def calcpoints(map):        
+def calcpoints(map):     
     vertexmap = map.combine().vertices
     rotated_vertices = []
     angle = radians(map.rotation_y if hasattr(map, 'rotation_y') else map.rotation[1])
@@ -97,6 +98,7 @@ def calcpoints(map):
     maxx = max(rotated_vertices)
     return minx, maxx
 
+
 def get_hsv_color(fraction):
     """
     Map a value between 0 and 1 to an RGB color from the hsv colormap.
@@ -108,6 +110,16 @@ def get_hsv_color(fraction):
     rgba = cmap(norm(fraction))
     rgb = [round(float(x), 3) for x in rgba[:3]]  # Convert to float and round
     return rgb # Return only RGB, ignore alpha
+
+def savehigh(mapcount, perccomp):
+    with open ('level_data.json', 'r') as file:
+        data = json.load(file)
+    if float(data[f"Level{mapcount}"]) < float(perccomp):
+        data[f"Level{mapcount}"] = (f"{perccomp}")
+        with open ('level_data.json', 'w') as file:
+            json.dump(data, file)
+    else:
+        pass
     
 
 # Gravity and movement variables
@@ -144,11 +156,15 @@ class Wall(Entity):
 
     def destroy(self):
         self.disable()
+
+class EndGate(Entity):
+    def __init__(self, position, scale, color):
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
         
+    def destroy(self):
+        self.disable()
         
-col1 = color.black
-col2 = color.gray
-col3 = color.red
+
 zTelPos = [
     [0, 0, 4],
     [0, 0, 2],
@@ -158,18 +174,30 @@ zTelPos = [
 ]
 # Create walls
 walls = [
-    Wall(position=(4.5, 0.5, 0), scale=(1, 2, 1), color=col1),
-    Wall(position=(-3, 2, 0), scale=(1, 5, 10), color=col3),
+    Wall(position=(4.5, 0.5, 0), scale=(1, 2, 1), color=color.black),
+    Wall(position=(-3, 2, 0), scale=(1, 5, 10), color=color.red),
 ]
 
 # Create ground
 ground = [
-    Ground(position=(zTelPos[0]), scale=(65, 1, 2), color = col1),
-    Ground(position=(zTelPos[1]), scale=(65, 1, 2), color = col2),
-    Ground(position=(zTelPos[2]), scale=(65, 1, 2), color = col1),
-    Ground(position=(zTelPos[3]), scale=(65, 1, 2), color = col2),
-    Ground(position=(zTelPos[4]), scale=(65, 1, 2), color = col1)
+    Ground(position=(zTelPos[0]), scale=(65, 1, 2), color = color.black),
+    Ground(position=(zTelPos[1]), scale=(65, 1, 2), color = color.gray),
+    Ground(position=(zTelPos[2]), scale=(65, 1, 2), color = color.black),
+    Ground(position=(zTelPos[3]), scale=(65, 1, 2), color = color.gray),
+    Ground(position=(zTelPos[4]), scale=(65, 1, 2), color = color.black)
 ]
+
+existing_gate = []
+def endgates(maxx):
+    forward_dist = maxx
+    endgate = [
+        EndGate(position=(forward_dist + 0.5, 0, 0 + 4), scale= (1, 65, 2), color=color.green),
+        EndGate(position=(forward_dist + 0.5, 0, 0 + 2), scale= (1, 65, 2), color=color.green),
+        EndGate(position=(forward_dist + 0.5, 0, 0 ), scale= (1, 65, 2), color=color.green),
+        EndGate(position=(forward_dist + 0.5, 0, 0 - 2), scale= (1, 65, 2), color=color.green),
+        EndGate(position=(forward_dist + 0.5, 0, 0 - 4), scale= (1, 65, 2), color=color.green)
+    ]
+    return endgate
 
 
 
@@ -247,9 +275,10 @@ class MainMenu(Entity):
 
     def open_level_select(self):
         self.enable_menu_components(False)
-        if not hasattr(self, 'level_select_screen'):
-            self.level_select_screen = LevelSelect(self)
-        self.level_select_screen.show()
+        if not hasattr(self, 'LSS'):
+            self.LSS = LevelSelect(self)
+        self.LSS.updatelevelperc()
+        self.LSS.show()
 
     def open_customisation(self):
         self.enable_menu_components(False)
@@ -340,7 +369,7 @@ class LevelSelect(Entity):
             enabled=True
         )
         
-        self.levelpercentage = Text(text="0.0%", parent=camera.ui, position=(0, -0.07, -0.1), color=color.black, enabled=True)
+        self.levelpercentage = Text(text="0.0%", parent=camera.ui, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
         
         # Level data loading
         with open ("level_data.json", "r") as f:
@@ -417,7 +446,7 @@ class LevelSelect(Entity):
         self.updatelevelperc()
 
     def start_game(self):
-        global game_ready, playlock, GameMap, minx, maxx, levelprog, current_mapcount
+        global game_ready, playlock, GameMap, minx, maxx, levelprog, current_mapcount, existing_gate
         self.MAP = self.MAPLIST[(int(self.mapcount) -1)]
         current_mapcount = self.mapcount
         # Render the selected map before starting the game
@@ -426,6 +455,7 @@ class LevelSelect(Entity):
             destroy(GameMap)
             GameMap = None
         GameMap = renderMap(self.MAP)
+        existing_gate = endgates(maxx)
         # Update level progress bar bounds
         levelprog.gamemap = GameMap
         levelprog.minX = minx
@@ -450,7 +480,7 @@ class LevelProgress(Entity):
         global GameMap, minx, maxx
         self.gamemap = GameMap
         #default state for level start
-        self.percentagecompletion = 0 
+        self.percentagecompletion = 0
         self.maxX = maxx
         self.minX = minx
         #create percentage bar entity ONCE
@@ -525,7 +555,32 @@ def reset_game_state():
     # Show main menu
     main_menu.rendermenu()
     
+class WinScreen(Entity):
+    def __init__(self):
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 255, 0, 180),
+            parent=camera.ui,
+            enabled=True
+        )
 
+        self.text = Text("You Win!", origin=(0, 0), scale=2, color=color.black, parent=self, enabled = True)
+        self.menu_button = Button(
+            text="Main Menu",
+            scale=(0.5, 0.1),
+            position=(0, -0.2),
+            parent=self,
+            enabled = True,
+            on_click=self.back_to_menu
+        )
+
+    def back_to_menu(self):
+        self.enabled = False
+        self.text.enabled = False
+        self.menu_button.enabled = False
+        main_menu.rendermenu()
+        
 class PauseMenu(Entity):
     def __init__(self):
         super().__init__(
@@ -540,7 +595,7 @@ class PauseMenu(Entity):
             scale=(0.4, 0.1),
             position=(0, 0.25),
             parent=self,
-            on_click=self.resume_game
+            on_click=self.disable
         )
         self.mainmenubutton = Button(
             text="Main Menu",
@@ -570,9 +625,6 @@ class PauseMenu(Entity):
         self.resume_button.enabled = False
         playlock = False
         paused = False
-
-    def resume_game(self):
-        self.disable()
 
 class Tint(Entity):
     def __init__(self, opacity):
@@ -841,16 +893,19 @@ def game_logic_step(dt):
     )
 
     if hit_info_death.hit and not death_anim.playing:
-        #Save highscore
-        with open ('level_data.json', 'r') as file:
-            data = json.load(file)
-        if float(data[f"Level{current_mapcount}"]) < float(levelprog.percentagecompletion):
-            data[f"Level{current_mapcount}"] = (f"{levelprog.percentagecompletion}")
-            with open ('level_data.json', 'w') as file:
-                json.dump(data, file)
-        else:
-            pass
+        #Determine whether this collision is the endgate or a real death
+        if hit_info_death.entity in existing_gate:
+            print('Winscreen Trigger')
+            levelprog.percentagecompletion = "100.0"
+            #Force respawn the player to avoid multi-checking the winscreen function over multiple iterations
+            respawn_player()
+            player.disable()
+            WinScreen().enable()
+            savehigh(current_mapcount, "100.0")
+            return
         
+        #Save highscore
+        savehigh(current_mapcount, levelprog.percentagecompletion)
         #Trigger death animation
         player.disable()
         death_anim.play(player.position, finished_callback=respawn_player)
