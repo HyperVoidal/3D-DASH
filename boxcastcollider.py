@@ -21,7 +21,6 @@ cache_clear(folder="models_compressed")
 
 def updategraphics(sizing):
     value = sizing.split("x")
-    print(value)
     numval = (int(value[0]), int(value[1]))
     window.size = numval
 
@@ -88,8 +87,10 @@ LARGESTX = 0
 fixed_dt = 1/60  # 60 updates per second
 accumulator = 0
 
-#Volume - representation of a % out of 100
+#Options menu systems
 Volume = 50 
+Sensitive = 50
+returntogame = False
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
@@ -153,6 +154,17 @@ def savehigh(mapcount, perccomp):
             json.dump(data, file)
     else:
         pass
+
+def saveplayerdata():
+    global Sensitive, Volume
+    data = {
+        "Sensitivity": Sensitive,
+        "Volume": Volume
+    }
+    with open ("playerdata.json", "w") as file:
+        json.dump(data, file)
+
+    
     
 
 # Gravity and movement variables
@@ -286,18 +298,23 @@ class MainMenu(Entity):
         self.options_button = None
         self.customise_button = None
         self.quit_button = None
-        self.options_back_button = None
         self.customise_back_button = None
 
     def rendermenu(self):
         global playlock
         playlock = True
         self.enabled = True
-        self.text = Text("Main Menu", origin=(0, -4), scale=2, background=True, parent=self)
-        self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
-        self.options_button = Button(text="Options", scale=(0.5, 0.1), position=(0, 0), parent=self, on_click=self.open_options)
-        self.customise_button = Button(text="Wardrobe", scale=(0.5, 0.1), position=(0, -0.1), parent=self, on_click=self.open_customisation)
-        self.quit_button = Button(text="Quit", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.quit_game)
+        if not self.text:
+            self.text = Text("3D-DASH", origin=(0, -4), scale=2, background=True, parent=self)
+        if not self.start_button:
+            self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
+        if not self.options_button:
+            self.options_button = Button(text="Options", scale=(0.5, 0.1), position=(0, 0), parent=self, on_click=self.open_options)
+        if not self.customise_button:
+            self.customise_button = Button(text="Wardrobe", scale=(0.5, 0.1), position=(0, -0.1), parent=self, on_click=self.open_customisation)
+        if not self.quit_button:
+            self.quit_button = Button(text="Quit", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.quit_game)
+        self.enable_menu_components(True)
 
     def enable_menu_components(self, enabled=True):
         if self.text: self.text.enabled = enabled
@@ -315,17 +332,9 @@ class MainMenu(Entity):
 
     def open_customisation(self):
         self.enable_menu_components(False)
-        if not self.customise_back_button:
-            self.customise_text = Text("Customisation menu opened (not implemented yet).", origin=(0, 0), scale=1.5, background=True, parent=self)
-            self.customise_back_button = Button(text="Back", scale=(0.3, 0.1), position=(0, -0.2), parent=self, on_click=self.close_customisation)
-        else:
-            self.customise_text.enabled = True
-            self.customise_back_button.enabled = True
-
-    def close_customisation(self):
-        self.customise_text.enabled = False
-        self.customise_back_button.enabled = False
-        self.enable_menu_components(True)
+        if not hasattr(self, "CUST"):
+            self.CUST = Customisation(self)
+        self.CUST.show()
 
     def open_options(self):
         self.enable_menu_components(False)
@@ -379,7 +388,7 @@ class LevelSelect(Entity):
             scale=(0.09, 0.03, 0.03),
             position=(0, -0.075, -0.1),
             rotation=(90, 0, 0),
-            parent=camera.ui,
+            parent=self,
             color=color.white,
             texture=None,
             enabled=True
@@ -394,7 +403,7 @@ class LevelSelect(Entity):
             enabled=True
         )
         
-        self.levelpercentage = Text(text="0.0%", parent=camera.ui, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
+        self.levelpercentage = Text(text="0.0%", parent=self, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
         
         # Level data loading
         with open ("level_data.json", "r") as f:
@@ -409,7 +418,6 @@ class LevelSelect(Entity):
         self.level_text = Text(f"Level {self.mapcount}", position=(0, 0.04, 0), origin=(0, 0.5), scale=2, background=True, parent=self, color=color.black)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
         self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
-        self.score = None # Placeholder for distance value, work with json file when implemented
         self.PlayerMap = None
         self.colorscale = None
         self.hide()
@@ -429,6 +437,8 @@ class LevelSelect(Entity):
         self.enabled = True
         self.left_button.enabled = True
         self.right_button.enabled = True
+        self.right_arrow.enabled = True
+        self.left_arrow.enabled = True
         self.level_text.enabled = True
         self.start_level_button.enabled = True
         self.back_button.enabled = True
@@ -440,6 +450,8 @@ class LevelSelect(Entity):
         self.enabled = False
         self.left_button.enabled = False
         self.right_button.enabled = False
+        self.right_arrow.enabled = False
+        self.left_arrow.enabled = False
         self.level_text.enabled = False
         self.start_level_button.enabled = False
         self.back_button.enabled = False
@@ -498,8 +510,15 @@ class LevelSelect(Entity):
 #Controls the 'options' screen and the related effects on gameplay.
 class Options(Entity):
     def __init__(self, main_menu, Volume):
+        global returntogame, playlock, paused
         self.main_menu = main_menu
         self.volume = Volume
+        self.backtothing = returntogame
+        playlock = True
+        
+        with open ("playerdata.json", "r") as file:
+            self.data = json.load(file)
+        
         super().__init__(
             model='Quad',
             scale=(2, 2),
@@ -509,19 +528,31 @@ class Options(Entity):
         )
         # Volume slider
         self.volume_slider = Slider(
-            min=0, max=1, step=0.01, default=0.5,
+            min=0, max=1, step=0.01, default=self.data["Volume"],
             text='Volume',
             scale=(0.7, 0.7, 0.7),
-            position=(-0.35, -0.22),
+            position=(-0.35, -0.22, -0.3),
             parent=self,
             vertical = True,
-            on_value_changed=self.set_volume  # Add this line
+            on_value_changed=self.set_volume 
         )
+
+        #Slider for sensitivity
+        self.sensitivity = Slider(
+            min=0, max=1, step=0.01, default=self.data["Sensitivity"],
+            text="Sensitivity",
+            scale=(0.7, 0.7, 0.7),
+            position=(0.35, -0.22, -0.3),
+            parent=self,
+            vertical=True,
+            on_value_changed=self.set_sens
+        )
+
         # Dropdown menu for window sizing
         self.windowsizingdrop = SimpleDropdown(
             label='Graphics',
             options=['1920x1080', "1600x900", "1536x960", "1280x720"],
-            position=(-0.175, 0.10),
+            position=(-0.125, 0.1, -0.1),
             parent=self,
             on_select=self.on_windowsizingdrop_select
         )
@@ -530,23 +561,34 @@ class Options(Entity):
         self.windowprop = SimpleDropdown(
             label='Border',
             options=["Fullscreen", "Windowed", "Borderless Windowed"],
-            position=(0.05, 0.1),
+            position=(0.125, 0.1, -0.2),
             parent=self,
             on_select=self.on_windowprop_select
         )
         
+        self.save = Button(
+            text="Save Options",
+            scale=(0.1, 0.1),
+            position=(0.35, 0.2, -0.3),
+            parent=self,
+            on_click=saveplayerdata
+        )
+
         self.back_button = Button(
             text="Back", 
             scale=(0.1, 0.1), 
-            position=(-0.35, 0.2), 
+            position=(-0.35, 0.2, -0.3), 
             parent=self, 
-            on_click=self.back_to_menu)
-        
-        #define obj parameters further
+            on_click=self.back
+        )
         
         #volume slider params for the label
         self.volume_slider.label.rotation_z = 90
         self.volume_slider.label.position = (-0.025, -0.04, 0)
+
+        #sens slider params for label
+        self.sensitivity.label.rotation_z = 90
+        self.sensitivity.label.position = (-0.025, -0.06, 0)
     
     def on_windowsizingdrop_select(self, value):
         print(f"Selected graphics: {value}")
@@ -559,23 +601,55 @@ class Options(Entity):
     def set_volume(self):
         self.volume = self.volume_slider.value
         global Volume
-        Volume = round(self.volume_slider.value * 100)
+        Volume = round(self.volume_slider.value, 2)
         # Schedule the knob text update for the next frame, after Ursina's internal update
-        print(f"Volume set to: {Volume}")
+    
+    def set_sens(self):
+        self.sens = self.sensitivity.value
+        global Sensitive
+        Sensitive = round(self.sensitivity.value, 2)
 
     def show(self):
         self.enabled = True
         self.volume_slider.enabled = True
         self.windowsizingdrop.enabled = True
+        self.save.enabled = True
+        self.back_button.enabled = True
+        self.sensitivity.enabled = True
 
     def hide(self):
         self.enabled = False
         self.volume_slider.enabled = False
         self.windowsizingdrop.enabled = False
+        self.save.enabled = False
+        self.back_button.enabled = False
+        self.sensitivity.enabled = False
 
-    def back_to_menu(self):
+    def back(self):
         self.hide()
-        self.main_menu.enable_menu_components(True)
+        if self.backtothing:
+            if not hasattr(app, 'pause_menu'):
+                app.pause_menu = PauseMenu()
+            app.pause_menu.show()
+            app.pause_menu.enable()
+            pass
+        else:
+            self.main_menu.enable_menu_components(True)
+
+class Customisation(Entity):
+    def __init__(self, main_menu):
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 0, 255, 1),
+            parent=camera.ui,
+            enabled=True
+        )
+    
+    def back_to_menu(self):
+        self.enabled = False
+        main_menu.rendermenu()
+
 
 # Multipurpose class for level progress tracking
 # Detects the total size of level, compares player progress through position, and updates the level progress file
@@ -634,32 +708,48 @@ class LevelProgress(Entity):
             self.percentagebar()
             
 
-def reset_game_state():
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap
+def reset_game_state(menu):
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu
+
+    if GameMap:
+        GameMap.disable()
+        destroy(GameMap)
+        GameMap = None
+    
+    for gate in existing_gate:
+        destroy(gate)
+    existing_gate.clear()
+    
+    # Clean up PauseMenu
+    if hasattr(app, 'pause_menu') and app.pause_menu:
+        destroy(app.pause_menu)
+        app.pause_menu = None
+    
     # Reset player state
     player.position = Vec3(0, 30, 0)
     player.z = zTelPos[2][2]
     velocity = 39.2
     currentztelpos = 2
     player.enable()
+    
     # Reset camera
     camera.position = Vec3(-20, 20, -20)
     camera.rotation = Vec3(0, 45, 0)
     camera.look_at(player.position)
+    
     # Reset flags
     camera_locked = False
     rot_locked = False
     playlock = False
     game_ready = False
     accumulator = 0
-    LevelSelect.mapcount = 0
-    LevelSelect.MAP = None
-    if GameMap:
-        GameMap.disable()
-        destroy(GameMap)
-        GameMap = None
-    # Show main menu
-    main_menu.rendermenu()
+
+    if menu == True:
+        # Show main menu (reuse existing)
+        main_menu.enabled = True
+        main_menu.enable_menu_components(True)
+    else:
+        pass
     
 class WinScreen(Entity):
     def __init__(self):
@@ -678,7 +768,7 @@ class WinScreen(Entity):
             position=(0, -0.2),
             parent=self,
             enabled = True,
-            on_click=lambda: (self.disable(), reset_game_state())
+            on_click=lambda: (self.disable(), reset_game_state(True))
         )
 
     def back_to_menu(self):
@@ -707,23 +797,30 @@ class PauseMenu(Entity):
         self.resume_button = Button(
             text="Resume",
             scale=(0.4, 0.1),
-            position=(0, 0.25),
+            position=(0, 0.33),
             parent=self,
             on_click=self.disable
         )
         self.mainmenubutton = Button(
             text="Main Menu",
             scale=(0.4, 0.1),
-            position=(0, 0),
+            position=(0, 0.11),
             parent=self,
-            on_click=lambda: (self.disable(), reset_game_state())
+            on_click=lambda: (reset_game_state(True))
         )
         self.exittodesktop_button = Button(
             text="Exit to Desktop",
             scale=(0.4, 0.1),
-            position=(0, -0.25),
+            position=(0, -0.11),
             parent=self,
             on_click=quit
+        )
+        self.options_button = Button(
+            text = "Options",
+            scale=(0.4, 0.1),
+            position=(0, -0.33),
+            parent=self,
+            on_click=lambda: (self.hide(), self.optionpull())
         )
 
     def rendermenu(self):
@@ -731,14 +828,48 @@ class PauseMenu(Entity):
         playlock = True
         self.enabled = True
         self.resume_button.enabled = True
+        self.mainmenubutton.enabled = True
+        self.exittodesktop_button.enabled = True
+        self.options_button.enabled = True
+        paused = True
+    
+    def optionpull(self):
+        global returntogame
+        returntogame = True
+        self.hide
+        if not hasattr(self, 'OptMen'):
+            self.OptMen = Options(self, Volume)
+        self.OptMen.show()
+    
+    def show(self):
+        global playlock, paused
+        self.enabled = True
+        paused = True
+        self.resume_button.enabled = True
+        self.mainmenubutton.enabled = True
+        self.exittodesktop_button.enabled = True
+        self.options_button.enabled = True
+        
+    def hide(self):
+        global playlock, paused
+        self.enabled = False
+        self.resume_button.enabled = False
+        self.mainmenubutton.enabled = False
+        self.exittodesktop_button.enabled = False
+        self.options_button.enabled = False
+        playlock = True
         paused = True
 
     def disable(self):
         global playlock, paused
         self.enabled = False
         self.resume_button.enabled = False
+        self.mainmenubutton.enabled = False
+        self.exittodesktop_button.enabled = False
+        self.options_button.enabled = False
         playlock = False
         paused = False
+
 
 class SimpleDropdown(Entity):
     currently_open_dropdown = None
@@ -769,7 +900,7 @@ class SimpleDropdown(Entity):
                 for i, option in enumerate(self.options):
                     b = Button(
                         text=option,
-                        position=(self.main_button.x, self.main_button.y - (i+1)*0.08, -0.01),
+                        position=(self.main_button.x, self.main_button.y - (i+1)*0.08, -1),
                         scale=(0.2, 0.05),
                         parent=self,
                         enabled=True,
@@ -904,11 +1035,25 @@ def input(key):
     #pause menu
     if game_ready:
         if key == 'tab':
-            if not hasattr(app, 'pause_menu'):
+            # Ensure pause_menu exists
+            if not hasattr(app, 'pause_menu') or app.pause_menu is None:
                 app.pause_menu = PauseMenu()
-            if app.pause_menu.enabled:
-                app.pause_menu.disable()
-            else:
+
+            try:
+                # Check if menu is already active
+                if app.pause_menu.enabled:
+                    app.pause_menu.disable()
+                else:
+                    # Make sure the menu is still valid
+                    if app.pause_menu.children:
+                        app.pause_menu.rendermenu()
+                    else:
+                        # Recreate it if the node got cleaned up
+                        app.pause_menu = PauseMenu()
+                        app.pause_menu.rendermenu()
+            except Exception as e:
+                print(f"Pause menu error: {e}")
+                app.pause_menu = PauseMenu()
                 app.pause_menu.rendermenu()
 
         
@@ -993,7 +1138,7 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive
     
     if not playlock:
         # --- All movement and physics logic goes here ---
@@ -1062,9 +1207,9 @@ def game_logic_step(dt):
     if hit_info_death.hit and not death_anim.playing:
         #Determine whether this collision is the endgate or a real death
         if hit_info_death.entity in existing_gate:
-            print('Winscreen Trigger')
             levelprog.percentagecompletion = "100.0"
             #Force respawn the player to avoid multi-checking the winscreen function over multiple iterations
+            reset_game_state(False)
             respawn_player()
             player.disable()
             WinScreen().enable()
@@ -1092,8 +1237,8 @@ def game_logic_step(dt):
     
     if not camera_locked:
         if mouse.left:
-            camera_loc.x -= mouse.velocity[0] * return_speed * 1500 * time.dt
-            camera_loc.y += mouse.velocity[1] * return_speed * 1500 * time.dt
+            camera_loc.x -= mouse.velocity[0] * return_speed * 3000 * Sensitive * time.dt
+            camera_loc.y += mouse.velocity[1] * return_speed * 3000 * Sensitive * time.dt
             camera.position = camera_loc
         else:
             camera_loc = lerp(camera_loc, return_location, time.dt * return_speed)
