@@ -1,7 +1,8 @@
 from ursina import *
-from math import radians, cos, sin
 from ursina import Button 
 from direct.actor.Actor import Actor
+from ursina import Slider
+from math import radians, cos, sin
 import time
 import threading 
 import shutil
@@ -16,8 +17,33 @@ def cache_clear(folder):
         shutil.rmtree(folder)
     except:
         print(f"WARNING\nCache clearing error detected - please restart the game!")
-
 cache_clear(folder="models_compressed")
+
+def updategraphics(sizing):
+    value = sizing.split("x")
+    print(value)
+    numval = (int(value[0]), int(value[1]))
+    window.size = numval
+
+#Bug with the window sizing - switching to fullscreen and then back out from a value that isnt 1920x1080
+#will leave the value of the dropdown select at the non 1920x1080 variable. This has no effect on experience besides
+#being an odd visual bug that needs fixing.
+def updatewindow(Value):
+    retainsizing = window.size
+    if Value == "Fullscreen":
+        window.fullscreen = True
+    elif Value == "Borderless Windowed":
+        window.borderless = True
+        window.fullscreen = False
+        window.size = retainsizing
+    elif Value == "Windowed":
+        window.borderless = False
+        window.fullscreen = False
+        window.size = retainsizing
+    else:
+        pass
+    
+
 
 #Loading screen asset caller - used later
 game_ready = False
@@ -57,6 +83,13 @@ minx = 0
 maxx = 0
 current_mapcount = 1
 LARGESTX = 0
+
+#Main systems for fps and update control
+fixed_dt = 1/60  # 60 updates per second
+accumulator = 0
+
+#Volume - representation of a % out of 100
+Volume = 50 
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
@@ -296,17 +329,9 @@ class MainMenu(Entity):
 
     def open_options(self):
         self.enable_menu_components(False)
-        if not self.options_back_button:
-            self.options_text = Text("Options menu opened (not implemented yet).", origin=(0, 0), scale=1.5, background=True, parent=self)
-            self.options_back_button = Button(text="Back", scale=(0.3, 0.1), position=(0, -0.2), parent=self, on_click=self.close_options)
-        else:
-            self.options_text.enabled = True
-            self.options_back_button.enabled = True
-
-    def close_options(self):
-        self.options_text.enabled = False
-        self.options_back_button.enabled = False
-        self.enable_menu_components(True)
+        if not hasattr(self, 'OptMen'):
+            self.OptMen = Options(self, Volume)
+        self.OptMen.show()
 
     def quit_game(self):
         quit()
@@ -470,6 +495,88 @@ class LevelSelect(Entity):
         self.hide()
         self.main_menu.enable_menu_components(True)
 
+#Controls the 'options' screen and the related effects on gameplay.
+class Options(Entity):
+    def __init__(self, main_menu, Volume):
+        self.main_menu = main_menu
+        self.volume = Volume
+        super().__init__(
+            model='Quad',
+            scale=(2, 2),
+            color=color.rgba(0, 0, 255, 1),
+            parent=camera.ui,
+            enabled=False
+        )
+        # Volume slider
+        self.volume_slider = Slider(
+            min=0, max=1, step=0.01, default=0.5,
+            text='Volume',
+            scale=(0.7, 0.7, 0.7),
+            position=(-0.35, -0.22),
+            parent=self,
+            vertical = True,
+            on_value_changed=self.set_volume  # Add this line
+        )
+        # Dropdown menu for window sizing
+        self.windowsizingdrop = SimpleDropdown(
+            label='Graphics',
+            options=['1920x1080', "1600x900", "1536x960", "1280x720"],
+            position=(-0.175, 0.10),
+            parent=self,
+            on_select=self.on_windowsizingdrop_select
+        )
+        
+        #dropdown menu for alternate window properties
+        self.windowprop = SimpleDropdown(
+            label='Border',
+            options=["Fullscreen", "Windowed", "Borderless Windowed"],
+            position=(0.05, 0.1),
+            parent=self,
+            on_select=self.on_windowprop_select
+        )
+        
+        self.back_button = Button(
+            text="Back", 
+            scale=(0.1, 0.1), 
+            position=(-0.35, 0.2), 
+            parent=self, 
+            on_click=self.back_to_menu)
+        
+        #define obj parameters further
+        
+        #volume slider params for the label
+        self.volume_slider.label.rotation_z = 90
+        self.volume_slider.label.position = (-0.025, -0.04, 0)
+    
+    def on_windowsizingdrop_select(self, value):
+        print(f"Selected graphics: {value}")
+        updategraphics(value)
+    
+    def on_windowprop_select(self, Value):
+        print(f"WindowSystemSelected: {Value}")
+        updatewindow(Value)
+    
+    def set_volume(self):
+        self.volume = self.volume_slider.value
+        global Volume
+        Volume = round(self.volume_slider.value * 100)
+        # Schedule the knob text update for the next frame, after Ursina's internal update
+        print(f"Volume set to: {Volume}")
+
+    def show(self):
+        self.enabled = True
+        self.volume_slider.enabled = True
+        self.windowsizingdrop.enabled = True
+
+    def hide(self):
+        self.enabled = False
+        self.volume_slider.enabled = False
+        self.windowsizingdrop.enabled = False
+
+    def back_to_menu(self):
+        self.hide()
+        self.main_menu.enable_menu_components(True)
+
 # Multipurpose class for level progress tracking
 # Detects the total size of level, compares player progress through position, and updates the level progress file
 # Also provides a UI for after-death to show furthest progress
@@ -526,7 +633,6 @@ class LevelProgress(Entity):
             self.textpercent.text = f"{self.percentagecompletion}%"
             self.percentagebar()
             
-            
 
 def reset_game_state():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap
@@ -572,7 +678,7 @@ class WinScreen(Entity):
             position=(0, -0.2),
             parent=self,
             enabled = True,
-            on_click=self.back_to_menu
+            on_click=lambda: (self.disable(), reset_game_state())
         )
 
     def back_to_menu(self):
@@ -580,6 +686,14 @@ class WinScreen(Entity):
         self.text.enabled = False
         self.menu_button.enabled = False
         main_menu.rendermenu()
+    
+    def disable(self):
+        global playlock, paused
+        self.enabled = False
+        self.text.enabled = False
+        self.menu_button.enabled = False
+        playlock = False
+        paused = False
         
 class PauseMenu(Entity):
     def __init__(self):
@@ -625,6 +739,62 @@ class PauseMenu(Entity):
         self.resume_button.enabled = False
         playlock = False
         paused = False
+
+class SimpleDropdown(Entity):
+    currently_open_dropdown = None
+    
+    def __init__(self, label, options, position=(0, 0), parent=None, on_select=None):
+        super().__init__(parent=parent)
+        self.label = label
+        self.options = options
+        self.selected = options[2]
+        self.on_select = on_select
+        self.main_button = Button(
+            text=f'{self.label}: {self.selected}',
+            position=position,
+            scale=(0.2, 0.07),
+            parent=self,
+            on_click=self.toggle_options
+        )
+        self.option_buttons = []
+        self.options_visible = False
+    
+    def toggle_options(self):
+        if SimpleDropdown.currently_open_dropdown and SimpleDropdown.currently_open_dropdown is not self:
+            SimpleDropdown.currently_open_dropdown.hide_options()
+        if self.options_visible:
+            self.hide_options()
+        else:
+            if not self.option_buttons:
+                for i, option in enumerate(self.options):
+                    b = Button(
+                        text=option,
+                        position=(self.main_button.x, self.main_button.y - (i+1)*0.08, -0.01),
+                        scale=(0.2, 0.05),
+                        parent=self,
+                        enabled=True,
+                        on_click=Func(self.select_option, option)
+                    )
+                    self.option_buttons.append(b)
+            else:
+                for b in self.option_buttons:
+                    b.enable()
+            self.options_visible = True
+            SimpleDropdown.currently_open_dropdown = self
+    
+    def hide_options(self):
+        for b in self.option_buttons:
+            b.disable()
+        self.options_visible = False
+        if SimpleDropdown.currently_open_dropdown is self:
+            SimpleDropdown.currently_open_dropdown = None
+
+    def select_option(self, option):
+        self.selected = option
+        self.main_button.text = f'{self.label}: {self.selected}'
+        self.toggle_options()
+        if self.on_select:
+            self.on_select(option)
 
 class Tint(Entity):
     def __init__(self, opacity):
@@ -806,9 +976,6 @@ def finish_loading():
 renderthread = threading.Thread(target=prerendering, daemon=True)
 renderthread.start()
 
-
-fixed_dt = 1/60  # 60 updates per second
-accumulator = 0
 
 # --- Main Update Loop ---
 def update():
