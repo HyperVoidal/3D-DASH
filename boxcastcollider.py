@@ -2,6 +2,7 @@ from ursina import *
 from ursina import Button 
 from direct.actor.Actor import Actor
 from ursina import Slider
+from ursina import destroy
 from math import radians, cos, sin
 import time
 import threading 
@@ -43,19 +44,11 @@ def updatewindow(Value):
         pass
     
 
-
-#Loading screen asset caller - used later
-game_ready = False
-window.vsync = True
-window.icon = "window_icon.ico"
-window.title = "3D DASH"
 app = Ursina()
-
-
-#Window Variables
-#window.borderless = True
-#monitorlist = window.monitors
-#window.size = (1280, 720)
+window.show_ursina_splash = True
+window.title = "3D DASH"
+#remember to set a custom icon when exporting this program to an exe, you can't change taskbar icon in normal ursina
+window.icon = "window_icon.ico"
 
 
 # --- PRE-APP SETUP AND VARIABLES ---
@@ -91,6 +84,8 @@ accumulator = 0
 Volume = 50 
 Sensitive = 50
 returntogame = False
+game_ready = False
+Text.default_font = "2TECH2.ttf"
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
@@ -250,30 +245,25 @@ def endgates(maxx):
 # Loading Screen
 class LoadingScreen(Entity):
     def __init__(self):
-        super().__init__(
-            model='Quad',
-            scale=(2, 2),
-            color=color.rgba(0, 0, 0, 1),
-            parent=camera.ui,
-            enabled=True
-        )
-        # Create background first, with lower z
+        super().__init__(parent=camera.ui, enabled=True)
+
+        # Background quad
         self.background = Entity(
-            model='Quad',
-            scale=(10, 10),
+            model='quad',
+            scale=(2, 2),
             color=color.black,
-            position=(0, 0, -2),  # Lower z to be behind text
-            parent=self,
-            enabled=True
+            z=0,  # In UI space, higher z = behind
+            parent=self
         )
-        # Then create text
+
+        # Text on top of background
         self.text = Text(
-        "Loading...",
-        origin=(0, 0),
-        color=color.white,
-        scale=2,
-        background=False,
-        parent=self
+            "Loading...",
+            origin=(0, 0),
+            scale=2,
+            background=True,
+            z=-1,  # In front of background
+            parent=self
         )
 
     def disable(self):
@@ -305,7 +295,7 @@ class MainMenu(Entity):
         playlock = True
         self.enabled = True
         if not self.text:
-            self.text = Text("3D-DASH", origin=(0, -4), scale=2, background=True, parent=self)
+            self.text = Text("3D-DASH", origin=(0, -3), font="Techno.ttf", scale=2.5, background=True, parent=self)
         if not self.start_button:
             self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
         if not self.options_button:
@@ -403,7 +393,7 @@ class LevelSelect(Entity):
             enabled=True
         )
         
-        self.levelpercentage = Text(text="0.0%", parent=self, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
+        self.levelpercentage = Text(text="0.0", parent=self, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
         
         # Level data loading
         with open ("level_data.json", "r") as f:
@@ -413,7 +403,7 @@ class LevelSelect(Entity):
         x_scaling = 9.95 * (float(levelpercent)/100)
         self.levelcomp.scale = (x_scaling, 1.2, 1.2)
         self.levelcomp.x = -4.95 + x_scaling / 2
-        self.levelpercentage.text = (f"{str(levelpercent)} %")
+        self.levelpercentage.text = (f"{str(levelpercent)}")
         
         self.level_text = Text(f"Level {self.mapcount}", position=(0, 0.04, 0), origin=(0, 0.5), scale=2, background=True, parent=self, color=color.black)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
@@ -431,7 +421,7 @@ class LevelSelect(Entity):
         x_scaling = 9.95 * (float(levelpercent)/100)
         self.levelcomp.scale = (x_scaling, 1.2, 1.2)
         self.levelcomp.x = -4.95 + x_scaling / 2
-        self.levelpercentage.text = (f"{str(levelpercent)} %")
+        self.levelpercentage.text = (f"{str(levelpercent)}")
 
     def show(self):
         self.enabled = True
@@ -526,6 +516,19 @@ class Options(Entity):
             parent=camera.ui,
             enabled=False
         )
+        
+        # Initialize UI elements as None
+        self.volume_slider = None
+        self.sensitivity = None
+        self.windowsizingdrop = None
+        self.windowprop = None
+        self.save = None
+        self.back_button = None
+        
+        # Create UI elements when first shown
+        self.create_ui_elements()
+    
+    def create_ui_elements(self):
         # Volume slider
         self.volume_slider = Slider(
             min=0, max=1, step=0.01, default=self.data["Volume"],
@@ -533,11 +536,11 @@ class Options(Entity):
             scale=(0.7, 0.7, 0.7),
             position=(-0.35, -0.22, -0.3),
             parent=self,
-            vertical = True,
+            vertical=True,
             on_value_changed=self.set_volume 
         )
 
-        #Slider for sensitivity
+        # Slider for sensitivity
         self.sensitivity = Slider(
             min=0, max=1, step=0.01, default=self.data["Sensitivity"],
             text="Sensitivity",
@@ -557,7 +560,7 @@ class Options(Entity):
             on_select=self.on_windowsizingdrop_select
         )
         
-        #dropdown menu for alternate window properties
+        # Dropdown menu for alternate window properties
         self.windowprop = SimpleDropdown(
             label='Border',
             options=["Fullscreen", "Windowed", "Borderless Windowed"],
@@ -582,13 +585,15 @@ class Options(Entity):
             on_click=self.back
         )
         
-        #volume slider params for the label
-        self.volume_slider.label.rotation_z = 90
-        self.volume_slider.label.position = (-0.025, -0.04, 0)
+        # Volume slider params for the label
+        if self.volume_slider and hasattr(self.volume_slider, 'label'):
+            self.volume_slider.label.rotation_z = 90
+            self.volume_slider.label.position = (-0.025, -0.04, 0)
 
-        #sens slider params for label
-        self.sensitivity.label.rotation_z = 90
-        self.sensitivity.label.position = (-0.025, -0.06, 0)
+        # Sens slider params for label
+        if self.sensitivity and hasattr(self.sensitivity, 'label'):
+            self.sensitivity.label.rotation_z = 90
+            self.sensitivity.label.position = (-0.025, -0.06, 0)
     
     def on_windowsizingdrop_select(self, value):
         print(f"Selected graphics: {value}")
@@ -602,7 +607,6 @@ class Options(Entity):
         self.volume = self.volume_slider.value
         global Volume
         Volume = round(self.volume_slider.value, 2)
-        # Schedule the knob text update for the next frame, after Ursina's internal update
     
     def set_sens(self):
         self.sens = self.sensitivity.value
@@ -611,31 +615,39 @@ class Options(Entity):
 
     def show(self):
         self.enabled = True
-        self.volume_slider.enabled = True
-        self.windowsizingdrop.enabled = True
-        self.save.enabled = True
-        self.back_button.enabled = True
-        self.sensitivity.enabled = True
+        
+        # If UI elements don't exist, create them
+        if not self.volume_slider:
+            self.create_ui_elements()
+        
+        # Enable all UI elements
+        if self.volume_slider: self.volume_slider.enabled = True
+        if self.sensitivity: self.sensitivity.enabled = True
+        if self.windowsizingdrop: self.windowsizingdrop.enabled = True
+        if self.windowprop: self.windowprop.enabled = True
+        if self.save: self.save.enabled = True
+        if self.back_button: self.back_button.enabled = True
 
     def hide(self):
+        # Just disable elements instead of destroying them
         self.enabled = False
-        self.volume_slider.enabled = False
-        self.windowsizingdrop.enabled = False
-        self.save.enabled = False
-        self.back_button.enabled = False
-        self.sensitivity.enabled = False
+        if self.volume_slider: self.volume_slider.enabled = False
+        if self.sensitivity: self.sensitivity.enabled = False
+        if self.windowsizingdrop: self.windowsizingdrop.enabled = False
+        if self.windowprop: self.windowprop.enabled = False
+        if self.save: self.save.enabled = False
+        if self.back_button: self.back_button.enabled = False
 
     def back(self):
         self.hide()
         if self.backtothing:
-            if not hasattr(app, 'pause_menu'):
+            if not hasattr(app, 'pause_menu') or app.pause_menu is None:
                 app.pause_menu = PauseMenu()
             app.pause_menu.show()
             app.pause_menu.enable()
-            pass
+            return
         else:
             self.main_menu.enable_menu_components(True)
-
 class Customisation(Entity):
     def __init__(self, main_menu):
         super().__init__(
@@ -684,7 +696,7 @@ class LevelProgress(Entity):
             enabled=True
         )
         self.textpercent = Text(
-            text="0.0%",
+            text="0.0",
             parent=camera.ui,
             position=(0.45, 0.46, 0),
             color=color.black,
@@ -704,7 +716,7 @@ class LevelProgress(Entity):
             progress = (player.x - self.minX) / (self.maxX - self.minX) if self.maxX != self.minX else 0
             progress = max(0, min(1, progress))  # Clamp to [0, 1]
             self.percentagecompletion = round(progress * 100, 1)
-            self.textpercent.text = f"{self.percentagecompletion}%"
+            self.textpercent.text = f"{self.percentagecompletion}"
             self.percentagebar()
             
 
@@ -724,7 +736,7 @@ def reset_game_state(menu):
     if hasattr(app, 'pause_menu') and app.pause_menu:
         destroy(app.pause_menu)
         app.pause_menu = None
-    
+        
     # Reset player state
     player.position = Vec3(0, 30, 0)
     player.z = zTelPos[2][2]
@@ -796,33 +808,33 @@ class PauseMenu(Entity):
         )
         self.resume_button = Button(
             text="Resume",
-            scale=(0.4, 0.1),
+            scale=(0.6, 0.1),
             position=(0, 0.33),
             parent=self,
             on_click=self.disable
         )
+        self.options_button = Button(
+            text = "Options",
+            scale=(0.6, 0.1),
+            position=(0, 0.11),
+            parent=self,
+            on_click=lambda: (self.hide(), self.optionpull())
+        )
         self.mainmenubutton = Button(
             text="Main Menu",
-            scale=(0.4, 0.1),
-            position=(0, 0.11),
+            scale=(0.6, 0.1),
+            position=(0, -0.11),
             parent=self,
             on_click=lambda: (reset_game_state(True))
         )
         self.exittodesktop_button = Button(
             text="Exit to Desktop",
-            scale=(0.4, 0.1),
-            position=(0, -0.11),
+            scale=(0.6, 0.1),
+            position=(0, -0.33),
             parent=self,
             on_click=quit
         )
-        self.options_button = Button(
-            text = "Options",
-            scale=(0.4, 0.1),
-            position=(0, -0.33),
-            parent=self,
-            on_click=lambda: (self.hide(), self.optionpull())
-        )
-
+        
     def rendermenu(self):
         global playlock, paused
         playlock = True
@@ -841,6 +853,11 @@ class PauseMenu(Entity):
             self.OptMen = Options(self, Volume)
         self.OptMen.show()
     
+    def removeopt(self):
+        if hasattr(self, 'OptMen') and self.OptMen:
+            destroy(self.OptMen)
+            self.OptMen = None
+
     def show(self):
         global playlock, paused
         self.enabled = True
@@ -1091,12 +1108,18 @@ def input(key):
             # position shifts one lane closer to camera
             # if at the closest possible lane, instead stay in the same place
         player.z = zTelPos[currentztelpos][2]
-    
+
+# Create and keep a reference for loadingscreen and levelprogress
+loading_screen = LoadingScreen()  
+levelprog = LevelProgress()
+
 # set a function to prerender all variables
 # apply it to a thread and call the loading screen while it's running
 #upon finish, invoke finish_loading to hide the loading screen and set game_ready to True
+
 def prerendering():
-    global death_anim
+    global death_anim, loading_screen
+    loading_screen.enable()
     # --- PRELOAD all animation frames to avoid first-run lag ---
     for frame in death_anim_frames:
         e = Entity(model=frame, enabled=True)
@@ -1108,11 +1131,10 @@ def prerendering():
     # After all loading is done, schedule finish_loading
     invoke(finish_loading, delay=0.1)
 
-loading_screen = LoadingScreen()  # Create and keep a reference
-levelprog = LevelProgress()
+
 
 def finish_loading():
-    global main_menu
+    global main_menu, loading_screen
     loading_screen.disable()  # Disable the correct instance
     #load main menu
     main_menu = MainMenu()
