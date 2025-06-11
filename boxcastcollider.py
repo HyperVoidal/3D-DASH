@@ -56,7 +56,8 @@ window.icon = "window_icon.ico"
 # Model Loading
 # Player entity with a collider
 #rgba value is set to the blender colour of the player model
-player = Entity(model='cube', color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
+
+player = Entity(model='cube', texture=None, color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
 
@@ -555,7 +556,7 @@ class Options(Entity):
         self.windowsizingdrop = SimpleDropdown(
             label='Graphics',
             options=['1920x1080', "1600x900", "1536x960", "1280x720"],
-            position=(-0.125, 0.1, -0.1),
+            position=(-0.15, 0.1, -0.1),
             parent=self,
             on_select=self.on_windowsizingdrop_select
         )
@@ -564,7 +565,7 @@ class Options(Entity):
         self.windowprop = SimpleDropdown(
             label='Border',
             options=["Fullscreen", "Windowed", "Borderless Windowed"],
-            position=(0.125, 0.1, -0.2),
+            position=(0.15, 0.1, -0.2),
             parent=self,
             on_select=self.on_windowprop_select
         )
@@ -648,8 +649,10 @@ class Options(Entity):
             return
         else:
             self.main_menu.enable_menu_components(True)
+            
 class Customisation(Entity):
     def __init__(self, main_menu):
+        self.player = player
         super().__init__(
             model='Quad',
             scale=(2, 2),
@@ -657,9 +660,63 @@ class Customisation(Entity):
             parent=camera.ui,
             enabled=True
         )
+        
+        self.back_button = Button(
+            text="Back",
+            scale=(0.1, 0.1),
+            position=(-0.35, 0.2, -0.3),
+            parent=self,
+            on_click=self.back_to_menu,
+            enabled=True
+        )  
+        
+        self.playerrep = Entity(
+            model='cube',
+            scale=(0.15, 0.15, 0.15),
+            position=(0, 0.1, -0.3),
+            rotation=(62.5, 0, 45),
+            texture=None,
+            color=color.rgba(0, 255, 0, 1),
+            parent=self,
+            enabled=True
+        )  
+        
+        #color=color.rgba(0, 255, 0, 1),
+        
+        #Insert generated rows of buttons from the CustomistionButtons entity into the customisation menu
+        if not hasattr(app, 'custbutt'):
+            app.custbutt = CustomisationButtons(
+                player, 
+                position=(0, 0, -0.7), 
+                scale=(0.05, 0.05), 
+                parent=self,
+                row1name=["Blue", "Yellow", "Orange", "Purple", "Pink", "Black", "White", "Red"],
+                row2name=["Christmas", "Skin1", "Skin2", "Skin3", "Skin4", "Skin5", "Skin6", "shit.png"],
+                )
+        app.custbutt.enabled = True
+        app.custbutt.generate_buttons()
+        
+    def updatethis(self, left, vel0, vel1):
+        if left:
+            self.playerrep.rotation_x -= vel0 * Sensitive * time.dt
+            self.playerrep.rotation_z += vel1 * Sensitive * time.dt
+            print('update?')
+        print("Updatethis called in customisation")
+        #self.playerrep.rotation_z += 0.5
+        
+        
+    def show(self):
+        self.enabled = True
+        self.back_button.enabled = True
+        self.playerrep.enabled=True
     
     def back_to_menu(self):
         self.enabled = False
+        self.back_button.enabled = False
+        self.playerrep.enabled=False
+        if hasattr(app, 'custbutt'):
+            app.custbutt.enabled = False
+            app.custbutt.removeall()
         main_menu.rendermenu()
 
 
@@ -887,7 +944,86 @@ class PauseMenu(Entity):
         playlock = False
         paused = False
 
-
+#class to generate a bunch of buttons where each one corresponds to changing the player character texture
+class CustomisationButtons(Entity):
+    def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, row1name=[], row2name=[]):
+        super().__init__(parent=parent)
+        self.player = player
+        self.position = position
+        self.button_size = scale
+        self.numperrow = 8
+        self.button_spacing = (1/self.numperrow) - 0.04
+        self.row1name = row1name
+        self.row2name = row2name
+        self.buttonrow1 = []
+        self.buttonrow2 = []
+        
+    def generate_buttons(self):
+        # Clear existing buttons first
+        try:
+            self.removeall()
+        except:
+            pass
+        
+        # Generate the buttons for the first row
+        for i in range(self.numperrow):
+            # Create a function that captures the current button
+            def make_click_handler(btn_index):
+                return lambda: self.on_button_click(f'{self.row1name[btn_index]}')
+            
+            button = Button(
+                text=self.row1name[i],
+                scale=self.button_size,
+                position=(
+                    (self.position[0] - 0.3) + self.button_spacing * (i % self.numperrow), 
+                    self.position[0] -0.1, 
+                    self.position[2]
+                ),
+                enabled=True,
+                parent=self,
+                on_click=make_click_handler(i)
+            )
+            self.buttonrow1.append(button)
+        
+        # Generate the buttons for the second row
+        for i in range(self.numperrow):
+            # Create a function that captures the current button
+            def make_click_handler(btn_index):
+                return lambda: self.on_button_click(f'{self.row2name[btn_index]}')
+            
+            button = Button(
+                text=self.row2name[i],
+                scale=self.button_size,
+                position=(
+                    (self.position[0] - 0.3) + self.button_spacing * (i % self.numperrow), 
+                    self.position[1] - 0.2, 
+                    self.position[2]
+                ),
+                enabled=True,
+                parent=self,
+                on_click=make_click_handler(i)
+            )
+            self.buttonrow2.append(button)
+            
+    def on_button_click(self, button):
+        # Handle button click event
+        print(f'{button} clicked')
+        
+    #create a tooltip to show the name of the button
+    def on_button_hover(self, button):
+        # Handle button hover event
+        print(f'{button} hovered')
+    
+    def removeall(self):
+        for button in self.buttonrow1:
+            destroy(button)
+        for button in self.buttonrow2:
+            destroy(button)
+        self.buttonrow1 = []
+        self.buttonrow2 = []
+    
+        
+    
 class SimpleDropdown(Entity):
     currently_open_dropdown = None
     
@@ -900,7 +1036,7 @@ class SimpleDropdown(Entity):
         self.main_button = Button(
             text=f'{self.label}: {self.selected}',
             position=position,
-            scale=(0.2, 0.07),
+            scale=(0.25, 0.07),
             parent=self,
             on_click=self.toggle_options
         )
@@ -1245,6 +1381,11 @@ def game_logic_step(dt):
         death_anim.play(player.position, finished_callback=respawn_player)
         camera_locked = True
         rot_locked = True
+    
+    if hasattr(app, 'CUST'):
+        #rotate cube
+        app.CUST.updatethis(mouse.left, mouse.velocity[0], mouse.velocity[1])
+        print("updatethis called in update")
         
 
     #Map Integrity Verification
