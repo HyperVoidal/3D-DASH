@@ -43,7 +43,6 @@ def updatewindow(Value):
         window.size = retainsizing
     else:
         pass
-    
 
 app = Ursina()
 window.show_ursina_splash = True
@@ -57,11 +56,39 @@ window.icon = "window_icon.ico"
 # Model Loading
 # Player entity with a collider
 #rgba value is set to the blender colour of the player model
+class PlayerMarker(Entity):
+    def __init__(self):
+        super().__init__(
+            model='arrowNOBG.obj',  # Using your existing arrow model
+            scale=(0.1, 0.1, 0.1),
+            color=color.orange,  # Match player color
+            texture=None,
+            rotation=(0, -45, -90),
+            enabled=False,  # Hidden by default
+            always_on_top=True,  # Always render on top
+        )
+        self.pulse_time = 0
+        self.base_scale = 0.1
+        
+    def update_position(self, player_pos):
+        """Update marker position above player"""
+        self.position = player_pos + Vec3(0, 2, 0)  # 2 units above player
+        
+    def update_pulse(self):
+        """Add pulsing animation to make marker more visible"""
+        self.pulse_time += time.dt  # Pulse speed
+        pulse_factor = 1 + 0.3 * math.sin(self.pulse_time)  # 30% size variation
+        self.scale = Vec3(self.base_scale * pulse_factor, self.base_scale * pulse_factor, self.base_scale * pulse_factor)
+
 sun = DirectionalLight()
 sun.look_at(Vec3(1, -1, -1))
 sun.shadows = True
-app.fog_color=color.light_gray
-app.fog_density = 0.5
+sun.color = color.white
+sun.intensity = 2.0  # Increase intensity
+
+ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
+
+app.fog_density = 0.1  # Much lighter fog
 
 player = Entity(model='cube', 
                 texture=None, 
@@ -70,6 +97,37 @@ player = Entity(model='cube',
                 collider='box', 
                 position=(0, 30, 0), 
                 shader=lit_with_shadows_shader)
+
+player_marker = PlayerMarker()
+
+def check_player_occlusion():
+    """Check if player is behind any objects from camera perspective"""
+    camera_to_player = player.position - camera.position
+    distance_to_player = camera_to_player.length()
+    direction = camera_to_player.normalized()
+    
+    # Raycast from camera toward player
+    hit_info = raycast(
+        origin=camera.position,
+        direction=direction,
+        distance=distance_to_player - 0.1,  # Stop just before player
+        ignore=[player, player_marker]  # Ignore player and marker
+    )
+    
+    return hit_info.hit
+
+def update_player_marker():
+    """Update marker visibility and position"""
+    is_occluded = check_player_occlusion()
+    
+    if is_occluded:
+        if not player_marker.enabled:
+            player_marker.enabled = True
+        
+        player_marker.update_position(player.position)
+        player_marker.update_pulse()
+    else:
+        player_marker.enabled = False
 
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
@@ -1398,6 +1456,8 @@ def game_logic_step(dt):
         player.y += velocity * dt
 
         is_grounded = False
+
+        update_player_marker()
 
         # --- Improved boxcast for highest ground point; this is the under-player cast---
         boxcast_distance = 0.3
