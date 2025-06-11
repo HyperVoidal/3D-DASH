@@ -3,6 +3,8 @@ from ursina import Button
 from direct.actor.Actor import Actor
 from ursina import Slider
 from ursina import destroy
+from ursina.shaders import lit_with_shadows_shader, basic_lighting_shader
+from ursina import DirectionalLight
 from math import radians, cos, sin
 import time
 import threading 
@@ -10,7 +12,6 @@ import shutil
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import json
-
 
 #cache clearing function - clean up the compressed models folder on startup
 def cache_clear(folder):
@@ -56,8 +57,20 @@ window.icon = "window_icon.ico"
 # Model Loading
 # Player entity with a collider
 #rgba value is set to the blender colour of the player model
+sun = DirectionalLight()
+sun.look_at(Vec3(1, -1, -1))
+sun.shadows = True
+app.fog_color=color.light_gray
+app.fog_density = 0.5
 
-player = Entity(model='cube', texture=None, color=(0.906, 0.501, 0.070, 1), scale=(1, 1, 1), collider='box', position=(0, 30, 0))
+player = Entity(model='cube', 
+                texture=None, 
+                color=(0.906, 0.501, 0.070, 1), 
+                scale=(1, 1, 1), 
+                collider='box', 
+                position=(0, 30, 0), 
+                shader=lit_with_shadows_shader)
+
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
 
@@ -70,6 +83,7 @@ MAPLIST = []
 for key in data:
     MAPLIST.append(str(key))
 MAP = None
+main_menu = None
 GameMap = None
 largestx = 0
 minx = 0
@@ -82,8 +96,10 @@ fixed_dt = 1/60  # 60 updates per second
 accumulator = 0
 
 #Options menu systems
-Volume = 50 
-Sensitive = 50
+with open ("playerdata.json", "r") as f:
+    data = json.load(f)
+Volume = data["Volume"]
+Sensitive = data["Sensitivity"]
 returntogame = False
 game_ready = False
 Text.default_font = "2TECH2.ttf"
@@ -95,6 +111,10 @@ def renderMap(map_name):
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
     GameMap.scale = (x_scale, 1, 1.5)
     GameMap.rotation = (0, 270, 0)
+    #Create shaders for map
+    GameMap.shader = lit_with_shadows_shader
+    if hasattr(GameMap.model, 'generate_normals'):
+        GameMap.model.generate_normals()
     # Temporarily position at origin to calculate min/max
     GameMap.position = (0, -0.5, 0)
     minx, maxx = calcpoints(GameMap)
@@ -187,20 +207,19 @@ currentztelpos = 2
 #This component will be maintained at the start of all levels
 class Ground(Entity):
     def __init__(self, position, scale, color):
-        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position, shader=lit_with_shadows_shader)
 
     def destroy(self):
         self.disable()
 class Wall(Entity):
     def __init__(self, position, scale, color):
-        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position, shader=lit_with_shadows_shader)
 
     def destroy(self):
         self.disable()
-
 class EndGate(Entity):
     def __init__(self, position, scale, color):
-        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position)
+        super().__init__(model='cube', scale=scale, collider='box', color=color, position=position, shader=lit_with_shadows_shader)
         
     def destroy(self):
         self.disable()
@@ -241,6 +260,22 @@ def endgates(maxx):
     return endgate
 
 
+# Add this function after your existing classes
+def add_wireframe_border(entity, border_color=color.black, scale_offset=0.01):
+    """Add a wireframe border to any entity"""
+    if hasattr(entity, 'wireframe_border'):
+        return  # Already has border
+    
+    entity.wireframe_border = Entity(
+        model='wireframe_cube',
+        parent=entity,
+        color=border_color,
+        scale=1 + scale_offset,
+        always_on_top=True
+    )
+
+# Apply to your player after creation
+add_wireframe_border(player, color.dark_gray, 0.02)
 
 # --- Main Classes ---
 # Loading Screen
@@ -323,9 +358,18 @@ class MainMenu(Entity):
 
     def open_customisation(self):
         self.enable_menu_components(False)
-        if not hasattr(self, "CUST"):
-            self.CUST = Customisation(self)
+        print("Opening customisation menu...")  # Debug
+        
+        # If CUST exists, properly destroy it first
+        if hasattr(self, 'CUST') and self.CUST is not None:
+            print("Destroying existing CUST...")  # Debug
+            self.CUST.destroy()
+            self.CUST = None
+        
+        # Create a new Customisation instance
+        self.CUST = Customisation(self)
         self.CUST.show()
+        
 
     def open_options(self):
         self.enable_menu_components(False)
@@ -652,6 +696,7 @@ class Options(Entity):
             
 class Customisation(Entity):
     def __init__(self, main_menu):
+        self.main_menu = main_menu
         self.player = player
         super().__init__(
             model='Quad',
@@ -678,46 +723,61 @@ class Customisation(Entity):
             texture=None,
             color=color.rgba(0, 255, 0, 1),
             parent=self,
+            shader=lit_with_shadows_shader,
             enabled=True
         )  
         
-        #color=color.rgba(0, 255, 0, 1),
+        # Create CustomisationButtons instance
+        self.custbutt = CustomisationButtons(
+            player, 
+            position=(0, 0, -0.7), 
+            scale=(0.05, 0.05), 
+            parent=self,
+            row1name=["Blue", "Yellow", "Orange", "Purple", "Pink", "Black", "White", "Red"],
+            row2name=["Christmas", "Skin1", "Skin2", "Skin3", "Skin4", "Skin5", "Skin6", "shit.png"],
+        )
+        self.custbutt.enabled = True
+        self.custbutt.generate_buttons()
         
-        #Insert generated rows of buttons from the CustomistionButtons entity into the customisation menu
-        if not hasattr(app, 'custbutt'):
-            app.custbutt = CustomisationButtons(
-                player, 
-                position=(0, 0, -0.7), 
-                scale=(0.05, 0.05), 
-                parent=self,
-                row1name=["Blue", "Yellow", "Orange", "Purple", "Pink", "Black", "White", "Red"],
-                row2name=["Christmas", "Skin1", "Skin2", "Skin3", "Skin4", "Skin5", "Skin6", "shit.png"],
-                )
-        app.custbutt.enabled = True
-        app.custbutt.generate_buttons()
+        print(f"Customisation created with {len(self.custbutt.allent)} button entities")  # Debug
         
     def updatethis(self, left, vel0, vel1):
-        if left:
-            self.playerrep.rotation_x -= vel0 * Sensitive * time.dt
-            self.playerrep.rotation_z += vel1 * Sensitive * time.dt
-            print('update?')
-        print("Updatethis called in customisation")
-        #self.playerrep.rotation_z += 0.5
-        
+        if left and self.enabled:
+            rotation_speed = 400
+            self.playerrep.rotation_x += vel1 * Sensitive * rotation_speed * time.dt
+            self.playerrep.rotation_z -= vel0 * Sensitive * rotation_speed * time.dt
         
     def show(self):
         self.enabled = True
         self.back_button.enabled = True
-        self.playerrep.enabled=True
+        self.playerrep.enabled = True
+        if hasattr(self, 'custbutt') and self.custbutt:
+            self.custbutt.enabled = True
+            # Don't regenerate if buttons already exist
+            if not self.custbutt.allent:
+                self.custbutt.generate_buttons()
     
     def back_to_menu(self):
+        print("Customisation.back_to_menu() called")  # Debug
+        self.cleanup()
+        self.main_menu.CUST = None
+        self.main_menu.rendermenu()
+        
+    def cleanup(self):
+        print("Customisation.cleanup() called")  # Debug
         self.enabled = False
         self.back_button.enabled = False
-        self.playerrep.enabled=False
-        if hasattr(app, 'custbutt'):
-            app.custbutt.enabled = False
-            app.custbutt.removeall()
-        main_menu.rendermenu()
+        self.playerrep.enabled = False
+        
+        if hasattr(self, 'custbutt') and self.custbutt:
+            self.custbutt.removeall()
+            destroy(self.custbutt)
+            self.custbutt = None
+        
+    def destroy(self):
+        print("Customisation.destroy() called")  # Debug
+        self.cleanup()
+        super().destroy()
 
 
 # Multipurpose class for level progress tracking
@@ -957,12 +1017,15 @@ class CustomisationButtons(Entity):
         self.row2name = row2name
         self.buttonrow1 = []
         self.buttonrow2 = []
+        self.allent = []
         
     def generate_buttons(self):
         # Clear existing buttons first
         try:
+            print("removing buttons")
             self.removeall()
         except:
+            print("removal error")
             pass
         
         # Generate the buttons for the first row
@@ -984,6 +1047,7 @@ class CustomisationButtons(Entity):
                 on_click=make_click_handler(i)
             )
             self.buttonrow1.append(button)
+            self.allent.append(button)
         
         # Generate the buttons for the second row
         for i in range(self.numperrow):
@@ -1004,7 +1068,10 @@ class CustomisationButtons(Entity):
                 on_click=make_click_handler(i)
             )
             self.buttonrow2.append(button)
-            
+            self.allent.append(button)
+        
+        print(f"Created {len(self.allent)} buttons")
+
     def on_button_click(self, button):
         # Handle button click event
         print(f'{button} clicked')
@@ -1015,12 +1082,27 @@ class CustomisationButtons(Entity):
         print(f'{button} hovered')
     
     def removeall(self):
-        for button in self.buttonrow1:
-            destroy(button)
-        for button in self.buttonrow2:
-            destroy(button)
-        self.buttonrow1 = []
-        self.buttonrow2 = []
+        print(f"Attempting to destroy {len(self.allent)} buttons")
+        destroyed_count = 0
+        for entity in self.allent:
+            if entity and hasattr(entity, 'enabled'):
+                try:
+                    entity.enabled = False
+                    destroy(entity)
+                    destroyed_count += 1
+                except Exception as e:
+                    print(f"Error destroying entity: {e}")
+        
+        # Clear the lists
+        self.buttonrow1.clear()
+        self.buttonrow2.clear()
+        self.allent.clear()
+        
+        print(f"Destroyed {destroyed_count} entities")  # Debugging line
+
+    def destroy(self):
+        self.removeall()
+        super().destroy()
     
         
     
@@ -1261,7 +1343,7 @@ def prerendering():
         e = Entity(model=frame, enabled=True)
         invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
 
-    death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1))
+    death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1), shader=lit_with_shadows_shader)
     death_anim.disable()
 
     # After all loading is done, schedule finish_loading
@@ -1282,7 +1364,12 @@ renderthread.start()
 
 # --- Main Update Loop ---
 def update():
-    global accumulator
+    global accumulator, main_menu
+
+    if (hasattr(main_menu, 'CUST') and main_menu.CUST and main_menu.CUST.enabled and hasattr(main_menu.CUST, 'updatethis')):
+        # Only update when customisation menu is active
+        main_menu.CUST.updatethis(mouse.left, mouse.velocity[0], mouse.velocity[1])
+    
     if not game_ready:
         return
 
@@ -1381,12 +1468,6 @@ def game_logic_step(dt):
         death_anim.play(player.position, finished_callback=respawn_player)
         camera_locked = True
         rot_locked = True
-    
-    if hasattr(app, 'CUST'):
-        #rotate cube
-        app.CUST.updatethis(mouse.left, mouse.velocity[0], mouse.velocity[1])
-        print("updatethis called in update")
-        
 
     #Map Integrity Verification
     if GameMap.collider:
