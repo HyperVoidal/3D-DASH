@@ -1,10 +1,7 @@
 from ursina import *
-from ursina import Button 
+from ursina import Button, Slider, destroy, DirectionalLight, lerp, distance
 from direct.actor.Actor import Actor
-from ursina import Slider
-from ursina import destroy
 from ursina.shaders import lit_with_shadows_shader, basic_lighting_shader
-from ursina import DirectionalLight
 from math import radians, cos, sin
 import time
 import threading 
@@ -12,6 +9,7 @@ import shutil
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import json
+import os
 
 #cache clearing function - clean up the compressed models folder on startup
 def cache_clear(folder):
@@ -237,6 +235,65 @@ def saveplayerdata():
     }
     with open ("playerdata.json", "w") as file:
         json.dump(data, file)
+        
+def skinapply(skin):
+    global player
+    skin = (str(skin)).lower()  
+    print(f"Applying skin: {skin}")
+    if skin == 'locked':
+        print("Unlock this skin first!")
+        return
+    # First check if it's a color name
+    try:
+        color_value = getattr(color, skin)
+        player.texture = None
+        player.color = color_value
+        print(f"Applied color: {color_value}")
+    except AttributeError:
+        # Not a color name, try as a texture path
+        try:
+            print(f"Trying to load texture: {skin}")
+            # Check if the file exists first
+            if os.path.exists(skin):
+                player.color = color.white  # Reset color to white for texture
+                player.texture = skin
+                print(f"Applied texture: {skin}")
+            else:
+                print(f"Texture file not found: {skin}")
+                # Fallback to a 'skin not found' skin
+                player.texture = "skinnotfound"
+                player.color = color.white
+                
+        except Exception as e:
+            print(f"Error applying texture: {e}")
+            # Fallback to a default color
+            player.texture = None
+            player.color = color.orange
+    
+    # Update skin data
+    with open('skindata.json', 'r') as f:
+        data = json.load(f)
+    
+    # Reset all values to 0
+    for key in data:
+        data[key][0] = 0
+    
+    # Set the selected skin to 1
+    # Check if the skin exists in the data (case-insensitive)
+    skin_found = False
+    for key in data:
+        if key.lower() == skin.lower():
+            data[key][0] = 1
+            skin_found = True
+            break
+    
+    if not skin_found:
+        print(f"Warning: skin '{skin}' not found in database")
+    
+    with open('skindata.json', 'w') as f:
+        json.dump(data, f)
+
+    
 
     
     
@@ -329,7 +386,7 @@ def add_wireframe_border(entity, border_color=color.black, scale_offset=0.01):
         parent=entity,
         color=border_color,
         scale=1 + scale_offset,
-        always_on_top=True
+        always_on_top = False,
     )
 
 # Apply to your player after creation
@@ -773,26 +830,48 @@ class Customisation(Entity):
             enabled=True
         )  
         
+        self.sun2 = DirectionalLight(
+            color=color.white,
+            direction=(0.5, -1, -0.5),
+            parent=self,
+            enabled=True
+        )
+        
         self.playerrep = Entity(
             model='cube',
             scale=(0.15, 0.15, 0.15),
             position=(0, 0.1, -0.3),
             rotation=(62.5, 0, 45),
-            texture=None,
-            color=color.rgba(0, 255, 0, 1),
+            texture=player.texture,
+            color=player.color,
             parent=self,
             shader=lit_with_shadows_shader,
+            always_on_top = True,
             enabled=True
         )  
         
+        add_wireframe_border(self.playerrep, color.dark_gray, 0.02)
+        
+        
+        with open ('skindata.json', 'r') as f:
+            data = json.load(f)
+        namelist = []
+        for key in data:
+            #update a new list for all of the skins. If a skin has "0" in the second entry of it's value list, replace with the name 'locked'
+            if data[key][1] == 0 or str(data[key][1]) == '0':
+                # This is a locked skin
+                namelist.append('Locked')
+            else:
+                # This is an unlocked skin
+                namelist.append(key)
+        print(f"Skin list: {namelist}")
         # Create CustomisationButtons instance
         self.custbutt = CustomisationButtons(
             player, 
             position=(0, 0, -0.7), 
             scale=(0.05, 0.05), 
             parent=self,
-            row1name=["Blue", "Yellow", "Orange", "Purple", "Pink", "Black", "White", "Red"],
-            row2name=["Christmas", "Skin1", "Skin2", "Skin3", "Skin4", "Skin5", "Skin6", "shit.png"],
+            skindata = namelist
         )
         self.custbutt.enabled = True
         self.custbutt.generate_buttons()
@@ -804,11 +883,16 @@ class Customisation(Entity):
             rotation_speed = 400
             self.playerrep.rotation_x += vel1 * Sensitive * rotation_speed * time.dt
             self.playerrep.rotation_z -= vel0 * Sensitive * rotation_speed * time.dt
+    
+    def updateplayerref(self, player):
+        self.playerrep.texture = player.texture
+        self.playerrep.color = player.color
         
     def show(self):
         self.enabled = True
         self.back_button.enabled = True
         self.playerrep.enabled = True
+        self.sun2.enabled = True
         if hasattr(self, 'custbutt') and self.custbutt:
             self.custbutt.enabled = True
             # Don't regenerate if buttons already exist
@@ -826,6 +910,7 @@ class Customisation(Entity):
         self.enabled = False
         self.back_button.enabled = False
         self.playerrep.enabled = False
+        self.sun2.enabled = False
         
         if hasattr(self, 'custbutt') and self.custbutt:
             self.custbutt.removeall()
@@ -1023,7 +1108,7 @@ class PauseMenu(Entity):
     def optionpull(self):
         global returntogame
         returntogame = True
-        self.hide
+        self.hide()
         if not hasattr(self, 'OptMen'):
             self.OptMen = Options(self, Volume)
         self.OptMen.show()
@@ -1062,107 +1147,126 @@ class PauseMenu(Entity):
         playlock = False
         paused = False
 
-#class to generate a bunch of buttons where each one corresponds to changing the player character texture
 class CustomisationButtons(Entity):
-    def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, row1name=[], row2name=[]):
+    def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, skindata=[]):
         super().__init__(parent=parent)
         self.player = player
         self.position = position
         self.button_size = scale
-        self.numperrow = 8
+        self.skindata = skindata
+        self.totalskins = len(skindata)
+        self.numofrow = 2
+        self.numperrow = self.totalskins // self.numofrow
         self.button_spacing = (1/self.numperrow) - 0.04
-        self.row1name = row1name
-        self.row2name = row2name
-        self.buttonrow1 = []
-        self.buttonrow2 = []
+        
+        # Store all buttons in a 2D grid for easier access
+        self.buttons = []
         self.allent = []
         
+        # Create tooltip once
+        self.tooltip = Tooltip(parent=camera.ui)
+            
     def generate_buttons(self):
         # Clear existing buttons first
-        try:
-            print("removing buttons")
-            self.removeall()
-        except:
-            print("removal error")
-            pass
+        self.removeall()
         
-        # Generate the buttons for the first row
-        for i in range(self.numperrow):
-            # Create a function that captures the current button
-            def make_click_handler(btn_index):
-                return lambda: self.on_button_click(f'{self.row1name[btn_index]}')
-            
-            button = Button(
-                text=self.row1name[i],
-                scale=self.button_size,
-                position=(
-                    (self.position[0] - 0.3) + self.button_spacing * (i % self.numperrow), 
-                    self.position[0] -0.1, 
+        # Load skin data for tooltips
+        with open('skindata.json', 'r') as f:
+            self.skin_data = json.load(f)
+        
+        # Calculate rows and columns
+        rows = min(self.numofrow, math.ceil(self.totalskins / self.numperrow))
+        cols = min(self.numperrow, self.totalskins)
+        
+        # Generate all buttons in a grid layout
+        button_index = 0
+        for row in range(rows):
+            button_row = []
+            for col in range(cols):
+                if button_index >= self.totalskins:
+                    break
+                    
+                skin_name = self.skindata[button_index]
+                
+                # Calculate position based on grid
+                button_position = (
+                    (self.position[0] - 0.3) + self.button_spacing * col, 
+                    self.position[1] - 0.1 - (0.1 * row), 
                     self.position[2]
-                ),
-                enabled=True,
-                parent=self,
-                on_click=make_click_handler(i)
-            )
-            self.buttonrow1.append(button)
-            self.allent.append(button)
+                )
+                
+                # Create button with index reference
+                button = Button(
+                    text=skin_name,
+                    scale=self.button_size,
+                    position=button_position,
+                    enabled=True,
+                    parent=self,
+                    on_click=lambda skin=skin_name: self.on_button_click(skin)
+                )
+                
+                # Store button index and skin name for hover handling
+                button.skin_name = skin_name
+                button.button_position = button_position
+                button.index = button_index
+                
+                # Set hover handlers
+                button.on_mouse_enter = lambda button=button: self.on_hover(button)
+                button.on_mouse_exit = self.tooltip.hide
+                
+                button_row.append(button)
+                self.allent.append(button)
+                button_index += 1
+                
+            self.buttons.append(button_row)
+    
+    def on_hover(self, button):
+        """Handle hover event for any button"""
+        skin = button.skin_name
+        position = button.button_position
         
-        # Generate the buttons for the second row
-        for i in range(self.numperrow):
-            # Create a function that captures the current button
-            def make_click_handler(btn_index):
-                return lambda: self.on_button_click(f'{self.row2name[btn_index]}')
-            
-            button = Button(
-                text=self.row2name[i],
-                scale=self.button_size,
-                position=(
-                    (self.position[0] - 0.3) + self.button_spacing * (i % self.numperrow), 
-                    self.position[1] - 0.2, 
-                    self.position[2]
-                ),
-                enabled=True,
-                parent=self,
-                on_click=make_click_handler(i)
-            )
-            self.buttonrow2.append(button)
-            self.allent.append(button)
+        # Get description or use default if not available
+        if skin == 'Locked':
+            desc = "Unlock this skin first!"
+        else:
+            # Safely get description from skin data
+            try:
+                desc = self.skin_data.get(skin, ["", "", "No description"])[2]
+            except (IndexError, KeyError):
+                desc = f"Skin: {skin}"
         
-        print(f"Created {len(self.allent)} buttons")
+        # Show tooltip with description
+        self.tooltip.show(text=desc, position=(position[0], position[1] + 0.1), scale_multiplier=1.2)
 
-    def on_button_click(self, button):
+    def on_button_click(self, skin):
         # Handle button click event
-        print(f'{button} clicked')
+        print(f'{skin} clicked')
+        skinapply(skin)
         
-    #create a tooltip to show the name of the button
-    def on_button_hover(self, button):
-        # Handle button hover event
-        print(f'{button} hovered')
+        # Update the player representation in the customization menu
+        if hasattr(self.parent, 'playerrep'):
+            self.parent.playerrep.texture = self.player.texture
+            self.parent.playerrep.color = self.player.color
     
     def removeall(self):
-        print(f"Attempting to destroy {len(self.allent)} buttons")
-        destroyed_count = 0
         for entity in self.allent:
             if entity and hasattr(entity, 'enabled'):
                 try:
                     entity.enabled = False
                     destroy(entity)
-                    destroyed_count += 1
                 except Exception as e:
                     print(f"Error destroying entity: {e}")
         
         # Clear the lists
-        self.buttonrow1.clear()
-        self.buttonrow2.clear()
+        self.buttons.clear()
         self.allent.clear()
-        
-        print(f"Destroyed {destroyed_count} entities")  # Debugging line
 
     def destroy(self):
         self.removeall()
+        if hasattr(self, 'tooltip') and self.tooltip:
+            destroy(self.tooltip)
         super().destroy()
-    
-        
+
     
 class SimpleDropdown(Entity):
     currently_open_dropdown = None
@@ -1219,6 +1323,62 @@ class SimpleDropdown(Entity):
         self.toggle_options()
         if self.on_select:
             self.on_select(option)
+
+class Tooltip(Entity):
+    def __init__(self, text='', parent=camera.ui, **kwargs):
+        super().__init__(
+            parent=parent,
+            model='quad',
+            scale=(0, 0),  # Start with zero scale
+            color=color.black66,
+            origin=(0, 0),
+            z=-1,  # Make sure it appears in front of other UI elements
+            **kwargs
+        )
+        
+        # Create text entity as child
+        self.text_entity = Text(
+            parent=self,
+            text=text,
+            color=color.white,
+            origin=(0, 0),
+            position = (0, 0, -0.05),
+            scale=10,
+            font="Poppins-MediumItalic.ttf",
+            enabled = True
+        )
+        
+        # Set initial state
+        self.target_scale = (0, 0)
+        self.original_text = text
+        self.background = None
+        
+    def show(self, text=None, position=None, scale_multiplier=1.0):
+        """Show the tooltip with optional new text and position"""
+        self.enabled = True
+        if text:
+            self.text_entity.text = text
+        else:
+            self.text_entity.text = self.original_text
+            
+        # Calculate background size based on text length
+        text_width = len(self.text_entity.text) * 0.02 * scale_multiplier
+        text_height = 0.05 * scale_multiplier
+        self.target_scale = (text_width, text_height)
+        
+        if position:
+            self.position = position
+            
+        self.text_entity.enabled = True
+        
+        #Animate in
+        self.scale = (0, 0)  # Start small for animation
+        self.animate_scale(self.target_scale, duration=0.1)
+        
+    def hide(self):
+        self.enabled = False
+        self.text_entity.enabled = False
+
 
 class Tint(Entity):
     def __init__(self, opacity):
@@ -1401,7 +1561,7 @@ def prerendering():
         e = Entity(model=frame, enabled=True)
         invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
 
-    death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=None, color=(0.906, 0.501, 0.070, 1), shader=lit_with_shadows_shader)
+    death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=player.texture, color=player.color, shader=lit_with_shadows_shader)
     death_anim.disable()
 
     # After all loading is done, schedule finish_loading
@@ -1427,6 +1587,7 @@ def update():
     if (hasattr(main_menu, 'CUST') and main_menu.CUST and main_menu.CUST.enabled and hasattr(main_menu.CUST, 'updatethis')):
         # Only update when customisation menu is active
         main_menu.CUST.updatethis(mouse.left, mouse.velocity[0], mouse.velocity[1])
+        main_menu.CUST.updateplayerref(player)
     
     if not game_ready:
         return
