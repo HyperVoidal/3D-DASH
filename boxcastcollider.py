@@ -2,7 +2,8 @@ from ursina import *
 from ursina import Button, Slider, destroy, DirectionalLight, lerp, distance
 from direct.actor.Actor import Actor
 from ursina.shaders import lit_with_shadows_shader, basic_lighting_shader
-from math import radians, cos, sin
+from panda3d.core import RenderState
+from math import radians, cos, sin, isnan, isinf
 import time
 import threading 
 import shutil
@@ -84,6 +85,10 @@ sun.shadows = True
 sun.color = color.white
 sun.intensity = 2.0  # Increase intensity
 
+sun.shadow_map_size = (2048, 2048)  # Increase shadow map size
+sun.shadow_map_resolution = (1024, 1024)
+sun.shadow_camera_size = 100
+
 ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
 
 app.fog_density = 0.1  # Much lighter fog
@@ -164,16 +169,67 @@ Text.default_font = "2TECH2.ttf"
 def renderMap(map_name):
     global GameMap, largestx, minx, maxx
     x_scale = 2
-    GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
-    GameMap.scale = (x_scale, 1, 1.5)
-    GameMap.rotation = (0, 270, 0)
-    #Create shaders for map
-    GameMap.shader = lit_with_shadows_shader
-    if hasattr(GameMap.model, 'generate_normals'):
-        GameMap.model.generate_normals()
+    
+    try:
+        GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
+        GameMap.scale = (x_scale, 1, 1.5)
+        GameMap.rotation = (0, 270, 0)
+        
+        # Validate the model before proceeding
+        if not GameMap.model or not GameMap.model.vertices:
+            print(f"ERROR: Invalid model data for {map_name}")
+            GameMap.disable()
+            destroy(GameMap)
+            return None
+            
+        # Check for NaN values in vertices
+        vertices = GameMap.model.vertices
+        has_invalid_vertex = False
+        for i, vertex in enumerate(vertices):
+            if any(math.isnan(coord) or math.isinf(coord) for coord in vertex):
+                print(f"ERROR: Invalid vertex at index {i}: {vertex}")
+                has_invalid_vertex = True
+                break
+        
+        if has_invalid_vertex:
+            print(f"ERROR: {map_name} contains invalid geometry")
+            GameMap.disable()
+            destroy(GameMap)
+            return None
+        
+        GameMap.set_light_off()
+        GameMap.shader = None
+        GameMap.color = color.gray
+        #Create shaders for map
+        GameMap.shader = lit_with_shadows_shader
+        GameMap.cast_shadows = True
+        GameMap.receive_shadows = True
+        
+        """ # DISABLE normal generation for problematic models
+        try:
+            if hasattr(GameMap.model, 'generate_normals'):
+                GameMap.model.generate_normals()
+        except:
+            pass """
+            
+    except Exception as e:
+        print(f"ERROR loading map {map_name}: {e}")
+        if 'GameMap' in locals():
+            GameMap.disable()
+            destroy(GameMap)
+        return None
+        
     # Temporarily position at origin to calculate min/max
     GameMap.position = (0, -0.5, 0)
-    minx, maxx = calcpoints(GameMap)
+    
+    try:
+        minx, maxx = calcpoints(GameMap)
+    except Exception as e:
+        print(f"ERROR calculating points for {map_name}: {e}")
+        GameMap.disable()
+        destroy(GameMap)
+        return None
+        
     # Desired starting X position in world space
     desired_start_x = 32.5
     # Shift so minx aligns with desired_start_x
@@ -183,6 +239,7 @@ def renderMap(map_name):
     minx, maxx = calcpoints(GameMap)
     LARGESTX = maxx
     return GameMap
+
 
 def calcpoints(map):     
     vertexmap = map.combine().vertices
