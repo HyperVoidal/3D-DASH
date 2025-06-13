@@ -249,6 +249,30 @@ def saveplayerdata():
     }
     with open ("playerdata.json", "w") as file:
         json.dump(data, file)
+
+def unlock_skins():
+    with open("skindata.json", "r") as f:
+        skinsdata = json.load(f)
+    with open("level_data.json", "r") as f:
+        levelsdata = json.load(f)
+    
+    # Get all skin keys as a list and slice from index 12 (13th item) onwards
+    all_skins = list(skinsdata.keys())
+    skins_13_and_above = all_skins[12:]  # Index 12 = 13th item
+    
+    # Iterate over the skins and set their status to "unlocked"
+    # Map specific levels to specific skins
+    for i, skin in enumerate(skins_13_and_above):
+        level_key = f"Level{i+1}"  # Level1 unlocks first skin, Level2 unlocks second, etc.
+        if level_key in levelsdata and levelsdata[level_key] == "100.0":
+            skinsdata[skin][1] = 1
+    
+    with open ("skindata.json", "w") as f:
+        json.dump(skinsdata, f)
+
+    return
+    
+
         
 def skinapply(skin):
     global player
@@ -284,20 +308,10 @@ def skinapply(skin):
             player.texture = None
             player.color = color.orange
             
-        #under construction
-        """             
-        if skin == 'clear':
-            print("WIREFRAME ACTIVE")
-            death_anim.wireframe = True
-            death_anim.texture = None
-            death_anim.color = color.black
-        else:
-            death_anim.wireframe = False
-            print("WIREFRAME AAAAAAAAAAAAAAAAAAAA")
-            print(f"{death_anim.wireframe}")
-            death_anim.texture = player.texture
-            death_anim.color = player.color """
-    
+
+    death_anim.texture = player.texture
+    death_anim.color = player.color 
+
     # Update skin data
     with open('skindata.json', 'r') as f:
         data = json.load(f)
@@ -1016,7 +1030,7 @@ class LevelProgress(Entity):
             
 
 def reset_game_state(menu):
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc
 
     if GameMap:
         GameMap.disable()
@@ -1038,11 +1052,13 @@ def reset_game_state(menu):
     velocity = 39.2
     currentztelpos = 2
     player.enable()
+    player.visible = True
     
     # Reset camera
     camera.position = Vec3(-20, 20, -20)
     camera.rotation = Vec3(0, 45, 0)
     camera.look_at(player.position)
+    camera_loc = player.position + Vec3(-20, 20, -20)
     
     # Reset flags
     camera_locked = False
@@ -1256,8 +1272,9 @@ class CustomisationButtons(Entity):
                     skin_preview.texture = None
                     lock_icon = Entity(
                         parent=button_container,
-                        model='lock_icon.obj',
-                        scale=(0.5, 0.5),
+                        model='quad',
+                        texture='LockIconImage.png',
+                        scale=(0.75, 0.5),
                         position = (0, 0, -0.02),
                         enabled=True
                     )
@@ -1483,7 +1500,7 @@ class Tint(Entity):
             )
         
 class BakedMeshAnimation(Entity):
-    playing = False  # <-- Add this line to ensure the attribute always exists
+    playing = False
 
     def __init__(self, frame_files, frame_time=0.03, **kwargs):
         super().__init__(model=frame_files[0], **kwargs)
@@ -1493,15 +1510,29 @@ class BakedMeshAnimation(Entity):
         self.time_accum = 0
         self.playing = False
         self.finished_callback = None
-        self.disable()  # Hide by default
+        
+        # Create wireframe overlay animation
+        self.wireframe_overlay = Entity(
+            model=frame_files[0],
+            parent=self,
+            position=(0, 0, 0),
+            scale=(1.01, 1.01, 1.01),  # Slightly larger to avoid z-fighting
+            wireframe=True,
+            color=color.black,
+            enabled=False
+        )
+        
+        self.disable()
 
     def play(self, position, finished_callback=None):
         self.position = position
         self.current_frame = 0
         self.time_accum = 0
         self.model = self.frame_files[0]
+        self.wireframe_overlay.model = self.frame_files[0]
         self.playing = True
         self.enable()
+        self.wireframe_overlay.enable()
         self.finished_callback = finished_callback
 
     def update(self):
@@ -1512,26 +1543,36 @@ class BakedMeshAnimation(Entity):
             self.time_accum = 0
             self.current_frame += 1
             if self.current_frame < len(self.frame_files):
+                # Update both the main animation and wireframe overlay
                 self.model = self.frame_files[self.current_frame]
+                self.wireframe_overlay.model = self.frame_files[self.current_frame]
             else:
                 self.playing = False
                 self.disable()
+                self.wireframe_overlay.disable()
                 if self.finished_callback:
                     self.finished_callback()
 
 def respawn_player():
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc
     player.position = Vec3(0, 5, 0)
-    player.movement = Vec3(0, 10, 0) 
     velocity = 0
     player.z = zTelPos[2][2]
     currentztelpos = 2
+
+    camera.position = Vec3(-20, 20, -20)
+    camera.rotation = Vec3(0, 45, 0)
+    camera.look_at(player.position)
+    camera_loc = player.position + Vec3(-20, 20, -20)
+
     # Allow movement after respawn animation - circumvents pausing error during death animation
     if not paused:
         player.enable()
         camera_locked = False
         rot_locked = False
         playlock = False  
+
+    invoke(lambda: setattr(player, 'visible', True), delay=0.01)
 
 def checkrotation(from_pos, to_pos):
     temp = Entity(position=from_pos)
@@ -1695,7 +1736,7 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock
     
     if not playlock:
         # --- All movement and physics logic goes here ---
@@ -1773,15 +1814,18 @@ def game_logic_step(dt):
             player.disable()
             WinScreen().enable()
             savehigh(current_mapcount, "100.0")
+            unlock_skins()
             return
         
         #Save highscore
         savehigh(current_mapcount, levelprog.percentagecompletion)
+
         #Trigger death animation
         player.disable()
-        death_anim.play(player.position, finished_callback=respawn_player)
         camera_locked = True
         rot_locked = True
+        playlock = True
+        death_anim.play(player.position, finished_callback=respawn_player)
 
     #Map Integrity Verification
     if GameMap.collider:
