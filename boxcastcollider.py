@@ -43,6 +43,7 @@ def updatewindow(Value):
     else:
         pass
 
+
 app = Ursina()
 window.show_ursina_splash = True
 window.title = "3D DASH"
@@ -71,7 +72,8 @@ class PlayerMarker(Entity):
         
     def update_position(self, player_pos):
         """Update marker position above player"""
-        self.position = player_pos + Vec3(0, 2, 0)  # 2 units above player
+        if not death_anim.playing:
+            self.position = player_pos + Vec3(0, 2, 0)  # 2 units above player
         
     def update_pulse(self):
         """Add pulsing animation to make marker more visible"""
@@ -93,9 +95,10 @@ ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
 
 app.fog_density = 0.1  # Much lighter fog
 
+
 player = Entity(model='cube', 
                 texture=None, 
-                color=(0.906, 0.501, 0.070, 1), 
+                color=color.orange,
                 scale=(1, 1, 1), 
                 collider='box', 
                 position=(0, 30, 0), 
@@ -131,6 +134,8 @@ def update_player_marker():
         player_marker.update_pulse()
     else:
         player_marker.enabled = False
+        
+
 
 # Prepare the list of animation frames
 death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
@@ -170,66 +175,18 @@ def renderMap(map_name):
     global GameMap, largestx, minx, maxx
     x_scale = 2
     
-    try:
-        GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
-        GameMap.scale = (x_scale, 1, 1.5)
-        GameMap.rotation = (0, 270, 0)
+    GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
+    GameMap.scale = (x_scale, 1, 1.5)
+    GameMap.rotation = (0, 270, 0)
         
-        # Validate the model before proceeding
-        if not GameMap.model or not GameMap.model.vertices:
-            print(f"ERROR: Invalid model data for {map_name}")
-            GameMap.disable()
-            destroy(GameMap)
-            return None
-            
-        # Check for NaN values in vertices
-        vertices = GameMap.model.vertices
-        has_invalid_vertex = False
-        for i, vertex in enumerate(vertices):
-            if any(math.isnan(coord) or math.isinf(coord) for coord in vertex):
-                print(f"ERROR: Invalid vertex at index {i}: {vertex}")
-                has_invalid_vertex = True
-                break
-        
-        if has_invalid_vertex:
-            print(f"ERROR: {map_name} contains invalid geometry")
-            GameMap.disable()
-            destroy(GameMap)
-            return None
-        
-        GameMap.set_light_off()
-        GameMap.shader = None
-        GameMap.color = color.gray
-        #Create shaders for map
-        GameMap.shader = lit_with_shadows_shader
-        GameMap.cast_shadows = True
-        GameMap.receive_shadows = True
-        
-        """ # DISABLE normal generation for problematic models
-        try:
-            if hasattr(GameMap.model, 'generate_normals'):
-                GameMap.model.generate_normals()
-        except:
-            pass """
-            
-    except Exception as e:
-        print(f"ERROR loading map {map_name}: {e}")
-        if 'GameMap' in locals():
-            GameMap.disable()
-            destroy(GameMap)
-        return None
+    GameMap.shader = lit_with_shadows_shader
+    GameMap.cast_shadows = True
+    GameMap.receive_shadows = True
         
     # Temporarily position at origin to calculate min/max
     GameMap.position = (0, -0.5, 0)
-    
-    try:
-        minx, maxx = calcpoints(GameMap)
-    except Exception as e:
-        print(f"ERROR calculating points for {map_name}: {e}")
-        GameMap.disable()
-        destroy(GameMap)
-        return None
-        
+    minx, maxx = calcpoints(GameMap)
+
     # Desired starting X position in world space
     desired_start_x = 32.5
     # Shift so minx aligns with desired_start_x
@@ -311,9 +268,9 @@ def skinapply(skin):
         try:
             print(f"Trying to load texture: {skin}")
             # Check if the file exists first
-            if os.path.exists(skin):
+            if os.path.exists((f"{skin}.jpg")):
                 player.color = color.white  # Reset color to white for texture
-                player.texture = skin
+                player.texture = (f"{skin}.jpg")
                 print(f"Applied texture: {skin}")
             else:
                 print(f"Texture file not found: {skin}")
@@ -326,6 +283,20 @@ def skinapply(skin):
             # Fallback to a default color
             player.texture = None
             player.color = color.orange
+            
+        #under construction
+        """             
+        if skin == 'clear':
+            print("WIREFRAME ACTIVE")
+            death_anim.wireframe = True
+            death_anim.texture = None
+            death_anim.color = color.black
+        else:
+            death_anim.wireframe = False
+            print("WIREFRAME AAAAAAAAAAAAAAAAAAAA")
+            print(f"{death_anim.wireframe}")
+            death_anim.texture = player.texture
+            death_anim.color = player.color """
     
     # Update skin data
     with open('skindata.json', 'r') as f:
@@ -350,10 +321,15 @@ def skinapply(skin):
     with open('skindata.json', 'w') as f:
         json.dump(data, f)
 
+def load_playerskins():
+    with open ('skindata.json', 'r') as f:
+        data = json.load(f)
     
-
-    
-    
+    # find what skin is equipped
+    for key, value in data.items():
+        if value[0] == 1:
+            skinapply(key)
+            break
 
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
@@ -937,9 +913,11 @@ class Customisation(Entity):
         
     def updatethis(self, left, vel0, vel1):
         if left and self.enabled:
-            rotation_speed = 400
+            rotation_speed = 10000
             self.playerrep.rotation_x += vel1 * Sensitive * rotation_speed * time.dt
             self.playerrep.rotation_z -= vel0 * Sensitive * rotation_speed * time.dt
+        if not left:
+            self.playerrep.rotation_z -= 10 * time.dt
     
     def updateplayerref(self, player):
         self.playerrep.texture = player.texture
@@ -997,7 +975,7 @@ class LevelProgress(Entity):
         self.BarFrame = Entity(
             model = 'ProgressBar.obj',
             scale=(0.09, 0.03, 0.03),
-            position=(0, 0.45, 0),
+            position=(0, 0.45, 3),
             rotation=(90, 0, 0),
             parent=camera.ui,
             color=color.white,
@@ -1204,6 +1182,9 @@ class PauseMenu(Entity):
         playlock = False
         paused = False
 
+#Rather than a name, fill  the button with a cube of the texture/colour of the button's assigned skin
+#This also means adding a lock icon to the ones without skins, though that would be the same as a grey colour + lock texture
+#and a tooltip that shows the name of the skin (already implemented)
 class CustomisationButtons(Entity):
     def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, skindata=[]):
         super().__init__(parent=parent)
@@ -1252,13 +1233,63 @@ class CustomisationButtons(Entity):
                     self.position[2]
                 )
                 
-                # Create button with index reference
+                button_container = Entity(
+                    parent = self,
+                    position = button_position,
+                    scale = self.button_size,
+                    model = 'quad',
+                    color=color.dark_gray,
+                    enabled = True,
+                )
+                
+                skin_preview = Entity(
+                    parent=button_container,
+                    model='cube',
+                    scale=(0.7, 0.7, 0.7),
+                    position=(0, 0, -0.01),
+                    rotation=(0, 0, 0),
+                    enabled=True
+                )
+                
+                if skin_name.lower() == 'locked':
+                    skin_preview.color = color.gray
+                    skin_preview.texture = None
+                    lock_icon = Entity(
+                        parent=button_container,
+                        model='lock_icon.obj',
+                        scale=(0.5, 0.5),
+                        position = (0, 0, -0.02),
+                        enabled=True
+                    )
+                    self.allent.append(lock_icon)
+                else:
+                    try:
+                        color_value = getattr(color, skin_name.lower(), None)
+                        if color_value:
+                            skin_preview.color= color_value
+                            skin_preview.texture = None
+                        else:
+                            if os.path.exists(f"{skin_name}.jpg"):
+                                skin_preview.color = color.white
+                                skin_preview.texture = f"{skin_name}.jpg"
+                            else:
+                                skin_preview.color = None
+                                skin_preview.texture = f"skinnotfound.png"
+                    except:
+                        skin_preview.color = color.white
+                        skin_preview.texture = f"skinnotfound.png"
+                        
+                #wireframe preview border
+                add_wireframe_border(skin_preview, color.black, 0.05)
+                
+                #invisible button for click handling
                 button = Button(
-                    text=skin_name,
-                    scale=self.button_size,
-                    position=button_position,
+                    parent=button_container,
+                    model='quad',
+                    scale=(1, 1),
+                    color=color.rgba(96, 96, 96, 0.7),
+                    position = (0, 0, -0.005),
                     enabled=True,
-                    parent=self,
                     on_click=lambda skin=skin_name: self.on_button_click(skin)
                 )
                 
@@ -1273,6 +1304,8 @@ class CustomisationButtons(Entity):
                 
                 button_row.append(button)
                 self.allent.append(button)
+                self.allent.append(button_container)
+                self.allent.append(skin_preview)
                 button_index += 1
                 
             self.buttons.append(button_row)
@@ -1280,7 +1313,6 @@ class CustomisationButtons(Entity):
     def on_hover(self, button):
         """Handle hover event for any button"""
         skin = button.skin_name
-        position = button.button_position
         
         # Get description or use default if not available
         if skin == 'Locked':
@@ -1293,8 +1325,10 @@ class CustomisationButtons(Entity):
                 desc = f"Skin: {skin}"
         
         # Show tooltip with description
-        self.tooltip.show(text=desc, position=(position[0], position[1] + 0.1), scale_multiplier=1.2)
-
+        if button.index < self.numperrow:
+            self.tooltip.show(text=desc, position=(button.button_position[0] * 2, (float(button.button_position[1]))), scale_multiplier=1.2)
+        else:
+            self.tooltip.show(text=desc, position=(button.button_position[0] * 2, button.button_position[1] - 0.1), scale_multiplier=1.2)
     def on_button_click(self, skin):
         # Handle button click event
         print(f'{skin} clicked')
@@ -1400,8 +1434,8 @@ class Tooltip(Entity):
             color=color.white,
             origin=(0, 0),
             position = (0, 0, -0.05),
-            scale=10,
-            font="Poppins-MediumItalic.ttf",
+            scale=(4, 15),
+            font="Poppins-Medium.ttf",
             enabled = True
         )
         
@@ -1419,7 +1453,7 @@ class Tooltip(Entity):
             self.text_entity.text = self.original_text
             
         # Calculate background size based on text length
-        text_width = len(self.text_entity.text) * 0.02 * scale_multiplier
+        text_width = len(self.text_entity.text) * 0.015 * scale_multiplier
         text_height = 0.05 * scale_multiplier
         self.target_scale = (text_width, text_height)
         
@@ -1628,6 +1662,8 @@ def prerendering():
 
 def finish_loading():
     global main_menu, loading_screen
+    #trigger skin update on finish loading
+    load_playerskins()
     loading_screen.disable()  # Disable the correct instance
     #load main menu
     main_menu = MainMenu()
