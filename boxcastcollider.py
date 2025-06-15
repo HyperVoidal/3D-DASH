@@ -136,9 +136,13 @@ def update_player_marker():
         player_marker.enabled = False
         
 
-
 # Prepare the list of animation frames
-death_anim_frames = [f'cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
+#Death animation frames
+death_anim_frames = [f'Anims/cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
+#main menu loop
+startmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(1, 42)]
+mainmenuloop_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(43, 150)]
+exitmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(151, 250)]
 
 #Import Json file
 with open ("level_data.json", "r") as f:
@@ -151,11 +155,11 @@ for key in data:
 MAP = None
 main_menu = None
 GameMap = None
-largestx = 0
 minx = 0
 maxx = 0
 current_mapcount = 1
-LARGESTX = 0
+menu_music_playing = True
+
 
 #Main systems for fps and update control
 fixed_dt = 1/60  # 60 updates per second
@@ -170,9 +174,25 @@ returntogame = False
 game_ready = False
 Text.default_font = "2TECH2.ttf"
 
+#SFX and Music Loading
+try:
+    buttonclick_sound = Audio('MenuClick.mp3', autoplay=False, loop=False)
+    menuback_music = Audio('MenuBGM.wav', autoplay=True, loop=True)
+    warp_sound = Audio("playerwarpsfx.mp3", autoplay=False, loop=False)
+except:
+    print("Warning: Some audio files not found. It is possible that certain SFX and Music will not play.")
+
+def applyvolume(Volume):
+    buttonclick_sound.volume = Volume
+    menuback_music.volume = Volume * 0.25
+    warp_sound.volume = Volume
+
+#Force load music and apply volume settings from Json file
+applyvolume(Volume=Volume)
+
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
-    global GameMap, largestx, minx, maxx
+    global GameMap, minx, maxx
     x_scale = 2
     
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
@@ -194,7 +214,6 @@ def renderMap(map_name):
     GameMap.position = (shift, -0.5, 0)
     # Recalculate minx, maxx after shifting
     minx, maxx = calcpoints(GameMap)
-    LARGESTX = maxx
     return GameMap
 
 
@@ -272,7 +291,6 @@ def unlock_skins():
 
     return
     
-
         
 def skinapply(skin):
     global player
@@ -477,10 +495,15 @@ class MainMenu(Entity):
         super().__init__(
             model='Quad',
             scale=(2, 2),
-            color=color.rgba(0, 0, 255, 1),  # rgb + opacity
+            color=color.rgba(255, 255, 255, 0),  # rgb + opacity
             parent=camera.ui,
             enabled=False
         )
+        # Create animated background
+        self.animated_background = AnimatedBackground(startmen_frames, mainmenuloop_frames)
+        self.animated_background.parent = self
+        self.animated_background.z = 0.1
+
         self.text = None
         self.start_button = None
         self.options_button = None
@@ -492,16 +515,19 @@ class MainMenu(Entity):
         global playlock
         playlock = True
         self.enabled = True
+
+        self.animated_background.play()
+
         if not self.text:
-            self.text = Text("3D-DASH", origin=(0, -3), font="Techno.ttf", scale=2.5, background=True, parent=self)
+            self.text = Text("3D-DASH", origin=(0, -1.5), font="Techno.ttf", scale=2.5, background=True, parent=self)
         if not self.start_button:
-            self.start_button = Button(text="Level Select", scale=(0.5, 0.1), position=(0, 0.1), parent=self, on_click=self.open_level_select)
+            self.start_button = Button(text="Level Select", scale=(0.25, 0.05), position=(0, -0.05), parent=self, on_click=lambda: (buttonclick_sound.play(), self.open_level_select()))
         if not self.options_button:
-            self.options_button = Button(text="Options", scale=(0.5, 0.1), position=(0, 0), parent=self, on_click=self.open_options)
+            self.options_button = Button(text="Options", scale=(0.25, 0.05), position=(0, -0.1), parent=self, on_click=lambda: (buttonclick_sound.play(), self.open_options()))
         if not self.customise_button:
-            self.customise_button = Button(text="Wardrobe", scale=(0.5, 0.1), position=(0, -0.1), parent=self, on_click=self.open_customisation)
+            self.customise_button = Button(text="Wardrobe", scale=(0.25, 0.05), position=(0, -0.15), parent=self, on_click=lambda: (buttonclick_sound.play(), self.open_customisation()))
         if not self.quit_button:
-            self.quit_button = Button(text="Quit", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.quit_game)
+            self.quit_button = Button(text="Quit", scale=(0.25, 0.05), position=(0, -0.2), parent=self, on_click=lambda: (buttonclick_sound.play(), self.quit_game()))
         self.enable_menu_components(True)
 
     def enable_menu_components(self, enabled=True):
@@ -537,6 +563,7 @@ class MainMenu(Entity):
         self.enable_menu_components(False)
         if not hasattr(self, 'OptMen'):
             self.OptMen = Options(self, Volume)
+        self.OptMen.backtothing = False
         self.OptMen.show()
 
     def quit_game(self):
@@ -559,7 +586,7 @@ class LevelSelect(Entity):
         )
         
         
-        self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=self.previous_level)
+        self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=lambda: (buttonclick_sound.play(), self.previous_level()))
         self.left_arrow = Entity(
             model='arrowNOBG.obj',
             scale=(0.03, 0.03, 0.03),
@@ -570,7 +597,7 @@ class LevelSelect(Entity):
             texture=None
         )
 
-        self.right_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=self.next_level)
+        self.right_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=lambda: (buttonclick_sound.play(), self.next_level()))
         self.right_arrow = Entity(
             model='arrowNOBG.obj',
             scale=(0.03, 0.03, 0.03),  
@@ -614,7 +641,7 @@ class LevelSelect(Entity):
         
         self.level_text = Text(f"Level {self.mapcount}", position=(0, 0.04, 0), origin=(0, 0.5), scale=2, background=True, parent=self, color=color.black)
         self.start_level_button = Button(text="Start Level", scale=(0.5, 0.1), position=(0, -0.2), parent=self, on_click=self.start_game)
-        self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=self.back_to_menu)
+        self.back_button = Button(text="Back", scale=(0.1, 0.1), position=(-0.35, 0.2), parent=self, on_click=lambda: (buttonclick_sound.play(), self.back_to_menu()))
         self.PlayerMap = None
         self.colorscale = None
         self.hide()
@@ -781,7 +808,7 @@ class Options(Entity):
             scale=(0.1, 0.1),
             position=(0.35, 0.2, -0.3),
             parent=self,
-            on_click=saveplayerdata
+            on_click=lambda: (buttonclick_sound.play(), saveplayerdata())
         )
 
         self.back_button = Button(
@@ -789,7 +816,7 @@ class Options(Entity):
             scale=(0.1, 0.1), 
             position=(-0.35, 0.2, -0.3), 
             parent=self, 
-            on_click=self.back
+            on_click=lambda: (buttonclick_sound.play(), self.back())
         )
         
         # Volume slider params for the label
@@ -814,6 +841,7 @@ class Options(Entity):
         self.volume = self.volume_slider.value
         global Volume
         Volume = round(self.volume_slider.value, 2)
+        applyvolume(Volume=Volume)
     
     def set_sens(self):
         self.sens = self.sensitivity.value
@@ -846,6 +874,8 @@ class Options(Entity):
         if self.back_button: self.back_button.enabled = False
 
     def back(self):
+        global returntogame
+        print(self.backtothing)
         self.hide()
         if self.backtothing:
             if not hasattr(app, 'pause_menu') or app.pause_menu is None:
@@ -854,7 +884,9 @@ class Options(Entity):
             app.pause_menu.enable()
             return
         else:
+            self.disable()
             self.main_menu.enable_menu_components(True)
+            returntogame=False
             
 class Customisation(Entity):
     def __init__(self, main_menu):
@@ -873,16 +905,9 @@ class Customisation(Entity):
             scale=(0.1, 0.1),
             position=(-0.35, 0.2, -0.3),
             parent=self,
-            on_click=self.back_to_menu,
+            on_click=lambda: (buttonclick_sound.play(), self.back_to_menu()),
             enabled=True
         )  
-        
-        self.sun2 = DirectionalLight(
-            color=color.white,
-            direction=(0.5, -1, -0.5),
-            parent=self,
-            enabled=True
-        )
         
         self.playerrep = Entity(
             model='cube',
@@ -941,7 +966,6 @@ class Customisation(Entity):
         self.enabled = True
         self.back_button.enabled = True
         self.playerrep.enabled = True
-        self.sun2.enabled = True
         if hasattr(self, 'custbutt') and self.custbutt:
             self.custbutt.enabled = True
             # Don't regenerate if buttons already exist
@@ -959,8 +983,7 @@ class Customisation(Entity):
         self.enabled = False
         self.back_button.enabled = False
         self.playerrep.enabled = False
-        self.sun2.enabled = False
-        
+
         if hasattr(self, 'custbutt') and self.custbutt:
             self.custbutt.removeall()
             destroy(self.custbutt)
@@ -1007,7 +1030,7 @@ class LevelProgress(Entity):
         self.textpercent = Text(
             text="0.0",
             parent=camera.ui,
-            position=(0.45, 0.46, 0),
+            position=(0.45, 0.46, 1),
             color=color.black,
             enabled=True
         )
@@ -1030,7 +1053,7 @@ class LevelProgress(Entity):
             
 
 def reset_game_state(menu):
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc, menu_music_playing
 
     if GameMap:
         GameMap.disable()
@@ -1071,8 +1094,17 @@ def reset_game_state(menu):
         # Show main menu (reuse existing)
         main_menu.enabled = True
         main_menu.enable_menu_components(True)
+        menu_music_playing = False
+        if menuback_music.playing:
+            menuback_music.stop()
+        menu_music_playing = True
+        menuback_music.play()
+        applyvolume(Volume=Volume)
     else:
         pass
+
+
+        
     
 class WinScreen(Entity):
     def __init__(self):
@@ -1091,7 +1123,7 @@ class WinScreen(Entity):
             position=(0, -0.2),
             parent=self,
             enabled = True,
-            on_click=lambda: (self.disable(), reset_game_state(True))
+            on_click=lambda: (buttonclick_sound.play(), self.disable(), reset_game_state(True))
         )
 
     def back_to_menu(self):
@@ -1122,21 +1154,21 @@ class PauseMenu(Entity):
             scale=(0.6, 0.1),
             position=(0, 0.33),
             parent=self,
-            on_click=self.disable
+            on_click=lambda: (buttonclick_sound.play(), self.disable())
         )
         self.options_button = Button(
             text = "Options",
             scale=(0.6, 0.1),
             position=(0, 0.11),
             parent=self,
-            on_click=lambda: (self.hide(), self.optionpull())
+            on_click=lambda: (buttonclick_sound.play(), self.hide(), self.optionpull())
         )
         self.mainmenubutton = Button(
             text="Main Menu",
             scale=(0.6, 0.1),
             position=(0, -0.11),
             parent=self,
-            on_click=lambda: (reset_game_state(True))
+            on_click=lambda: (buttonclick_sound.play(), reset_game_state(True))
         )
         self.exittodesktop_button = Button(
             text="Exit to Desktop",
@@ -1162,6 +1194,8 @@ class PauseMenu(Entity):
         self.hide()
         if not hasattr(self, 'OptMen'):
             self.OptMen = Options(self, Volume)
+        else:
+            self.OptMen.backtothing = True
         self.OptMen.show()
     
     def removeopt(self):
@@ -1298,6 +1332,8 @@ class CustomisationButtons(Entity):
                         
                 #wireframe preview border
                 add_wireframe_border(skin_preview, color.black, 0.05)
+                if hasattr(skin_preview, 'wireframe_border'):
+                    self.allent.append(skin_preview.wireframe_border)
                 
                 #invisible button for click handling
                 button = Button(
@@ -1348,6 +1384,7 @@ class CustomisationButtons(Entity):
             self.tooltip.show(text=desc, position=(button.button_position[0] * 2, button.button_position[1] - 0.1), scale_multiplier=1.2)
     def on_button_click(self, skin):
         # Handle button click event
+        buttonclick_sound.play()
         print(f'{skin} clicked')
         skinapply(skin)
         
@@ -1390,7 +1427,7 @@ class SimpleDropdown(Entity):
             position=position,
             scale=(0.25, 0.07),
             parent=self,
-            on_click=self.toggle_options
+            on_click=lambda: (buttonclick_sound.play(), self.toggle_options())
         )
         self.option_buttons = []
         self.options_visible = False
@@ -1409,7 +1446,7 @@ class SimpleDropdown(Entity):
                         scale=(0.2, 0.05),
                         parent=self,
                         enabled=True,
-                        on_click=Func(self.select_option, option)
+                        on_click=lambda opt=option: (buttonclick_sound.play(), self.select_option(opt))
                     )
                     self.option_buttons.append(b)
             else:
@@ -1553,12 +1590,80 @@ class BakedMeshAnimation(Entity):
                 if self.finished_callback:
                     self.finished_callback()
 
+class AnimatedBackground(Entity):
+    def __init__(self, intro_frames, loop_frames, frame_time=0.033, **kwargs):
+        super().__init__(
+            model='quad',
+            scale=(1.78, 1),  # Same as main menu background
+            color=color.white,  # Keep white so texture shows properly
+            parent=camera.ui,
+            z=1,  # Behind other UI elements
+            **kwargs
+        )
+        
+        self.intro_frames = intro_frames
+        self.loop_frames = loop_frames
+        self.current_frames = intro_frames
+        self.frame_time = frame_time
+        self.current_frame = 0
+        self.time_accum = 0
+        self.playing = False
+        self.is_intro = True
+
+        # Start with first frame
+        if intro_frames:
+            self.texture = intro_frames[0]
+
+    def play(self):
+        self.current_frame = 0
+        self.time_accum = 0
+        self.playing = True
+        self.enabled = True
+        self.is_intro = True
+        self.current_frames = self.intro_frames
+        if self.intro_frames:
+            self.texture = self.intro_frames[0]
+
+    def stop(self):
+        self.playing = False
+        self.enabled = False
+
+    def update(self):
+        if not self.playing or not self.enabled:
+            return
+            
+        self.time_accum += time.dt
+        if self.time_accum >= self.frame_time:
+            self.time_accum = 0
+            self.current_frame += 1
+            
+            # Check if we've finished the current sequence
+            if self.current_frame >= len(self.current_frames):
+                if self.is_intro:
+                    # Switch to loop frames
+                    print("Switching to loop animation")  # Debug
+                    self.is_intro = False
+                    self.current_frames = self.loop_frames
+                    self.current_frame = 0
+                else:
+                    # Loop the loop frames
+                    self.current_frame = 0
+            
+            # Update texture
+            if self.current_frame < len(self.current_frames):
+                self.texture = self.current_frames[self.current_frame]
+
+
 def respawn_player():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc
     player.position = Vec3(0, 5, 0)
     velocity = 0
     player.z = zTelPos[2][2]
     currentztelpos = 2
+
+    #Force stop playing sounds
+    if warp_sound.playing:
+        warp_sound.stop()
 
     camera.position = Vec3(-20, 20, -20)
     camera.rotation = Vec3(0, 45, 0)
@@ -1656,6 +1761,8 @@ def input(key):
                 pass  # Ignore input if death animation is playing
             
         if key == 'd':
+            # position shifts one lane further away from the camera
+            # if at the furthest possible lane, instead stay in the same place
             if currentztelpos == 4:
                 # Create a semi-transparent red tint
                 tint = Tint(opacity=0.2)
@@ -1663,9 +1770,12 @@ def input(key):
                 invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
             else:
                 currentztelpos += 1
-            # position shifts one lane further away from the camera
-            # if at the furthest possible lane, instead stay in the same place
+            #play teleport sfx
+            if not warp_sound.playing:
+                warp_sound.play()
         if key == 'a':
+            # position shifts one lane closer to camera
+            # if at the closest possible lane, instead stay in the same place
             if currentztelpos == 0:
                 # Create a semi-transparent red tint
                 tint = Tint(opacity=0.2)
@@ -1673,8 +1783,9 @@ def input(key):
                 invoke(tint.disable, delay=0.5)  # Disable the tint after the shake duration
             else:
                 currentztelpos -= 1
-            # position shifts one lane closer to camera
-            # if at the closest possible lane, instead stay in the same place
+            #play teleport sfx
+            if not warp_sound.playing:
+                warp_sound.play()
         player.z = zTelPos[currentztelpos][2]
 
 # Create and keep a reference for loadingscreen and levelprogress
@@ -1686,15 +1797,96 @@ levelprog = LevelProgress()
 #upon finish, invoke finish_loading to hide the loading screen and set game_ready to True
 
 def prerendering():
-    global death_anim, loading_screen
+    global death_anim, loading_screen, startmen_frames, mainmenuloop_frames
     loading_screen.enable()
+
+    # Add progress tracking
+    total_items = len(death_anim_frames) + len(startmen_frames) + len(mainmenuloop_frames) + 2
+    current_item = [0]  # Use list to allow modification in nested functions
+    original_pos = Vec3(0.5, -0.3, 0)
+
+    #loading screen ui features
+    # Create progress UI
+    progress_bar = Entity(
+        model='cube',
+        scale=(0, 0.02, 0.01),
+        position=(0, -0.3, -0.1),
+        color=color.white,
+        parent=loading_screen
+    )
+    progress_bg = Entity(
+        model='cube',
+        scale=(0.05, 0.05, 0.05),
+        position=(0, -0.3, 0),
+        rotation=(45, 0, 45),
+        color=player.color,
+        texture=player.texture,
+        parent=loading_screen
+    )
+
+    add_wireframe_border(progress_bg, color.black, 0.02)
+
+    progress_text = Text(
+        "Loading... 0%",
+        parent=loading_screen,
+        position=(0, -0.4, -0.1),
+        origin=(0, 0),
+        scale=1.5
+    )
+
+    def update_progress():
+        current_item[0] += 1
+        progress = current_item[0] / total_items
+        progress_bar.scale_x = 0.8 * progress
+        progress_bar.x = -0.4 + (0.4 * progress)
+        progress_text.text = f"Loading... {int(progress * 100)} percent"
+
+    # Add spinning jump animation to the cube because I felt silly
+    # Add jumping and spinning animation
+    def jump_and_spin():
+        if progress_bg.enabled:
+            # Jump up while spinning
+            progress_bg.animate_position(
+                Vec3(0.5, -0.15, 0),  # Jump up (keep same x, change y)
+                duration=0.5,
+                curve=curve.out_quad
+            )
+            progress_bg.animate_rotation(
+                progress_bg.rotation + Vec3(0, 0, 360),  # Full spin
+                duration=1.0
+            )
+            
+            # Fall back down after reaching peak
+            invoke(lambda: progress_bg.animate_position(
+                original_pos,  # Fall back to original position
+                duration=0.5,
+                curve=curve.in_quad
+            ) if progress_bg.enabled else None, delay=0.5)
+            
+            # Schedule next jump after complete cycle
+            invoke(jump_and_spin, delay=1.2)
+    
+    jump_and_spin()
+
     # --- PRELOAD all animation frames to avoid first-run lag ---
     for frame in death_anim_frames:
+        update_progress()
         e = Entity(model=frame, enabled=True)
+
         invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
 
     death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=player.texture, color=player.color, shader=lit_with_shadows_shader)
     death_anim.disable()
+
+    for frame in startmen_frames:
+        update_progress()
+        e = Entity(model='quad', enabled=True, texture=frame)
+        invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
+    
+    for frame in mainmenuloop_frames:
+        update_progress()
+        e = Entity(model='quad', enabled=True, texture=frame)
+        invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
 
     # After all loading is done, schedule finish_loading
     invoke(finish_loading, delay=0.1)
@@ -1736,9 +1928,16 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing
     
     if not playlock:
+
+        #disable music if playing
+        if game_ready:
+            if menu_music_playing:
+                menuback_music.fade_out(duration=0.5)
+                menu_music_playing = False
+
         # --- All movement and physics logic goes here ---
         player.x += move_x * dt
 
@@ -1788,9 +1987,11 @@ def game_logic_step(dt):
             player.y += 0.3
             velocity = 0
     else:
+
         # When immobilized, prevent all movement and physics
         velocity = 0
         is_grounded = False
+        menuback_music.play()
 
     # --- Boxcast for wall collision (instakill) ---
     # (This can remain outside, so death still triggers when immobilized)
