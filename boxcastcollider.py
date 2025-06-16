@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import json
 import os
+import numpy as np
+from PIL import Image, ImageDraw
+from ursina.mesh import Mesh
 
 #cache clearing function - clean up the compressed models folder on startup
 def cache_clear(folder):
@@ -185,6 +188,88 @@ load_playerskins()
 
 player_marker = PlayerMarker()
 
+
+def create_synthwave_grid_texture(width=512, height=512, grid_size=32):
+    """Create a synthwave-style grid texture"""
+    # Create image
+    img = Image.new('RGBA', (width, height), (0, 0, 0, 255))  # Black background
+    draw = ImageDraw.Draw(img)
+    
+    # Grid colors (synthwave palette)
+    grid_color = (255, 0, 255, 255)  # Magenta
+    accent_color = (0, 255, 255, 255)  # Cyan
+    
+    # Draw vertical lines
+    for x in range(0, width, grid_size):
+        color = accent_color if x % (grid_size * 4) == 0 else grid_color
+        draw.line([(x, 0), (x, height)], fill=color, width=2)
+    
+    # Draw horizontal lines
+    for y in range(0, height, grid_size):
+        color = accent_color if y % (grid_size * 4) == 0 else grid_color
+        draw.line([(0, y), (width, y)], fill=color, width=2)
+    
+    # Save texture
+    img.save('synthwave_grid.png')
+    return 'synthwave_grid.png'
+
+def create_procedural_cylinder_skybox():
+    """Create a procedural cylinder skybox"""
+    
+    # Generate the grid texture
+    grid_texture = create_synthwave_grid_texture()
+   
+    # Generate cylinder vertices
+    segments = 64  # Higher = smoother cylinder
+    height = 200
+    radius = 300
+    
+    vertices = []
+    triangles = []
+    uvs = []
+    
+    # Create cylinder vertices
+    for i in range(segments + 1):
+        angle = (i / segments) * 2 * math.pi
+        x = math.cos(angle) * radius
+        z = math.sin(angle) * radius
+        
+        # Bottom vertex
+        vertices.append((x, -height/2, z))
+        uvs.append((i/segments, 0))
+        
+        # Top vertex  
+        vertices.append((x, height/2, z))
+        uvs.append((i/segments, 1))
+    
+    # Create triangles for cylinder walls
+    for i in range(segments):
+        # Each quad becomes 2 triangles
+        base = i * 2
+        next_base = ((i + 1) % segments) * 2
+        
+        # Triangle 1
+        triangles.append((base, base + 1, next_base))
+        # Triangle 2  
+        triangles.append((next_base, base + 1, next_base + 1))
+    
+    # Create the mesh
+    cylinder_mesh = Mesh(vertices=vertices, triangles=triangles, uvs=uvs)
+    
+    return Entity(
+        model=cylinder_mesh,
+        texture=grid_texture,
+        rotation = (0, 0, 90),
+        position=(0, 0, 0),
+        double_sided=True,  # Important: render from inside
+        unlit=True,  # No lighting for consistent appearance
+        color=color.white,
+        scale=(1, 10, 1)
+    )
+
+# Replace your cylSky with this:
+cylSky = create_procedural_cylinder_skybox()
+
 def check_player_occlusion():
     """Check if player is behind any objects from camera perspective"""
     camera_to_player = player.position - camera.position
@@ -226,6 +311,25 @@ exitmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(160, 
 #Import Json file
 with open ("level_data.json", "r") as f:
     data = json.load(f)
+       
+# Gravity and movement variables
+gravity = -39.2  # Gravity acceleration
+velocity = 39.2  # Initial vertical velocity
+is_grounded = False
+move_x = 6 #movespeed
+playlock = False
+paused = False
+
+#Camera Positioning
+camera.position = Vec3(-20, 20, -20)  # Initial camera position
+camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
+camera.look_at(player.position) # Initial look at
+return_rotation = Vec3(0, 45, 0)
+return_speed = 5 #how fast the camera returns to equilibrium position
+camera_loc = player.position + Vec3(-20, 20, -20)
+camera_locked = False
+rot_locked = False
+currentztelpos = 2
 
 #Map Data
 MAPLIST = []
@@ -273,12 +377,19 @@ applyvolume(Volume=Volume)
 
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
-    global GameMap, minx, maxx
+    global GameMap, minx, maxx, sun
     x_scale = 2
     
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
     GameMap.scale = (x_scale, 1, 1.5)
     GameMap.rotation = (0, 270, 0)
+
+    GameMap.collider = 'mesh'
+
+    if hasattr(GameMap, 'collision'):
+        GameMap.collision = None
+    GameMap.collision = GameMap.model
+
         
     GameMap.shader = lit_with_shadows_shader
     GameMap.cast_shadows = True
@@ -372,27 +483,6 @@ def unlock_skins():
         json.dump(skinsdata, f)
 
     return
-    
-        
-# Gravity and movement variables
-gravity = -39.2  # Gravity acceleration
-velocity = 39.2  # Initial vertical velocity
-is_grounded = False
-move_x = 6 #movespeed
-playlock = False
-paused = False
-
-#Camera Positioning
-camera.position = Vec3(-20, 20, -20)  # Initial camera position
-camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
-camera.look_at(player.position) # Initial look at
-return_rotation = Vec3(0, 45, 0)
-return_speed = 5 #how fast the camera returns to equilibrium position
-camera_loc = player.position + Vec3(-20, 20, -20)
-camera_locked = False
-rot_locked = False
-currentztelpos = 2
-
 
 #Starting ground functions for rendering (TO BE PUT INTO A CLASS OR SEPERATE FILE FOR "LEVEL START")
 #This component will be maintained at the start of all levels
