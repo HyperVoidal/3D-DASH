@@ -43,12 +43,86 @@ def updatewindow(Value):
     else:
         pass
 
+def skinapply(skin):
+    global player
+    skin = (str(skin)).lower()  
+    print(f"Applying skin: {skin}")
+    if skin == 'locked':
+        print("Unlock this skin first!")
+        return
+    # First check if it's a color name
+    try:
+        color_value = getattr(color, skin)
+        player.texture = None
+        player.color = color_value
+        print(f"Applied color: {color_value}")
+    except AttributeError:
+        # Not a color name, try as a texture path
+        try:
+            print(f"Trying to load texture: {skin}")
+            # Check if the file exists first
+            if os.path.exists((f"{skin}.jpg")):
+                player.color = color.white  # Reset color to white for texture
+                player.texture = (f"{skin}.jpg")
+                print(f"Applied texture: {skin}")
+            else:
+                print(f"Texture file not found: {skin}")
+                # Fallback to a 'skin not found' skin
+                player.texture = "skinnotfound"
+                player.color = color.white
+                
+        except Exception as e:
+            print(f"Error applying texture: {e}")
+            # Fallback to a default color
+            player.texture = None
+            player.color = color.orange
+            
+    try:
+        death_anim.texture = player.texture
+        death_anim.color = player.color 
+    except:
+        print("Skipping death animation texture update for funsies")
+
+    # Update skin data
+    with open('skindata.json', 'r') as f:
+        data = json.load(f)
+    
+    # Reset all values to 0
+    for key in data:
+        data[key][0] = 0
+    
+    # Set the selected skin to 1
+    # Check if the skin exists in the data (case-insensitive)
+    skin_found = False
+    for key in data:
+        if key.lower() == skin.lower():
+            data[key][0] = 1
+            skin_found = True
+            break
+    
+    if not skin_found:
+        print(f"Warning: skin '{skin}' not found in database")
+    
+    with open('skindata.json', 'w') as f:
+        json.dump(data, f)
+
+def load_playerskins():
+    with open ('skindata.json', 'r') as f:
+        data = json.load(f)
+    
+    # find what skin is equipped
+    for key, value in data.items():
+        if value[0] == 1:
+            skinapply(key)
+            break
+
 
 app = Ursina()
 window.show_ursina_splash = True
 window.title = "3D DASH"
 #remember to set a custom icon when exporting this program to an exe, you can't change taskbar icon in normal ursina
 window.icon = "window_icon.ico"
+skybox_image = load_texture("sky_sunset.jpg")
 
 
 # --- PRE-APP SETUP AND VARIABLES ---
@@ -86,6 +160,7 @@ sun.look_at(Vec3(1, -1, -1))
 sun.shadows = True
 sun.color = color.white
 sun.intensity = 2.0  # Increase intensity
+Sky(texture=skybox_image, scale=0.01)
 
 sun.shadow_map_size = (2048, 2048)  # Increase shadow map size
 sun.shadow_map_resolution = (1024, 1024)
@@ -95,6 +170,8 @@ ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
 
 app.fog_density = 0.1  # Much lighter fog
 
+with open ('skindata.json', 'r') as f:
+    skindata = json.load(f)
 
 player = Entity(model='cube', 
                 texture=None, 
@@ -103,6 +180,8 @@ player = Entity(model='cube',
                 collider='box', 
                 position=(0, 30, 0), 
                 shader=lit_with_shadows_shader)
+
+load_playerskins()
 
 player_marker = PlayerMarker()
 
@@ -140,9 +219,9 @@ def update_player_marker():
 #Death animation frames
 death_anim_frames = [f'Anims/cubedeathani/miniexplode.f{str(i).zfill(4)}.glb' for i in range(1, 45)]
 #main menu loop
-startmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(1, 42)]
-mainmenuloop_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(43, 150)]
-exitmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(151, 250)]
+startmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(1, 99)]
+mainmenuloop_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(100, 158)]
+exitmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(160, 250)]
 
 #Import Json file
 with open ("level_data.json", "r") as f:
@@ -159,6 +238,7 @@ minx = 0
 maxx = 0
 current_mapcount = 1
 menu_music_playing = True
+buttoncontrols = ["a", "d", "space"] #left, right, jump IN THAT ORDER
 
 
 #Main systems for fps and update control
@@ -170,6 +250,7 @@ with open ("playerdata.json", "r") as f:
     data = json.load(f)
 Volume = data["Volume"]
 Sensitive = data["Sensitivity"]
+buttoncontrols = data["ButtonControls"]
 returntogame = False
 game_ready = False
 Text.default_font = "2TECH2.ttf"
@@ -261,10 +342,11 @@ def savehigh(mapcount, perccomp):
         pass
 
 def saveplayerdata():
-    global Sensitive, Volume
+    global Sensitive, Volume, buttoncontrols
     data = {
         "Sensitivity": Sensitive,
-        "Volume": Volume
+        "Volume": Volume,
+        "ButtonControls": buttoncontrols
     }
     with open ("playerdata.json", "w") as file:
         json.dump(data, file)
@@ -292,77 +374,6 @@ def unlock_skins():
     return
     
         
-def skinapply(skin):
-    global player
-    skin = (str(skin)).lower()  
-    print(f"Applying skin: {skin}")
-    if skin == 'locked':
-        print("Unlock this skin first!")
-        return
-    # First check if it's a color name
-    try:
-        color_value = getattr(color, skin)
-        player.texture = None
-        player.color = color_value
-        print(f"Applied color: {color_value}")
-    except AttributeError:
-        # Not a color name, try as a texture path
-        try:
-            print(f"Trying to load texture: {skin}")
-            # Check if the file exists first
-            if os.path.exists((f"{skin}.jpg")):
-                player.color = color.white  # Reset color to white for texture
-                player.texture = (f"{skin}.jpg")
-                print(f"Applied texture: {skin}")
-            else:
-                print(f"Texture file not found: {skin}")
-                # Fallback to a 'skin not found' skin
-                player.texture = "skinnotfound"
-                player.color = color.white
-                
-        except Exception as e:
-            print(f"Error applying texture: {e}")
-            # Fallback to a default color
-            player.texture = None
-            player.color = color.orange
-            
-
-    death_anim.texture = player.texture
-    death_anim.color = player.color 
-
-    # Update skin data
-    with open('skindata.json', 'r') as f:
-        data = json.load(f)
-    
-    # Reset all values to 0
-    for key in data:
-        data[key][0] = 0
-    
-    # Set the selected skin to 1
-    # Check if the skin exists in the data (case-insensitive)
-    skin_found = False
-    for key in data:
-        if key.lower() == skin.lower():
-            data[key][0] = 1
-            skin_found = True
-            break
-    
-    if not skin_found:
-        print(f"Warning: skin '{skin}' not found in database")
-    
-    with open('skindata.json', 'w') as f:
-        json.dump(data, f)
-
-def load_playerskins():
-    with open ('skindata.json', 'r') as f:
-        data = json.load(f)
-    
-    # find what skin is equipped
-    for key, value in data.items():
-        if value[0] == 1:
-            skinapply(key)
-            break
-
 # Gravity and movement variables
 gravity = -39.2  # Gravity acceleration
 velocity = 39.2  # Initial vertical velocity
@@ -734,11 +745,12 @@ class LevelSelect(Entity):
 #Controls the 'options' screen and the related effects on gameplay.
 class Options(Entity):
     def __init__(self, main_menu, Volume):
-        global returntogame, playlock, paused
+        global returntogame, playlock, paused, buttoncontrols
         self.main_menu = main_menu
         self.volume = Volume
         self.backtothing = returntogame
         playlock = True
+        self.button_controls = buttoncontrols
         
         with open ("playerdata.json", "r") as file:
             self.data = json.load(file)
@@ -810,13 +822,39 @@ class Options(Entity):
             parent=self,
             on_click=lambda: (buttonclick_sound.play(), saveplayerdata())
         )
-
         self.back_button = Button(
             text="Back", 
             scale=(0.1, 0.1), 
             position=(-0.35, 0.2, -0.3), 
             parent=self, 
             on_click=lambda: (buttonclick_sound.play(), self.back())
+        )
+        
+        # ControlButton LEFT
+        self.rebindleft_button = Button(
+            text=f"Left: {self.button_controls[0]}",
+            scale=(0.15, 0.075),
+            position=(-0.2, 0.2, -0.3),
+            parent=self,
+            on_click=lambda: (buttonclick_sound.play(), self.rebind_control("left"))
+        )
+        
+        # ControlButton RIGHT
+        self.rebindright_button = Button(
+            text=f"Right: {self.button_controls[1]}",
+            scale=(0.15, 0.075),
+            position=(0, 0.2, -0.3),
+            parent=self,
+            on_click=lambda: (buttonclick_sound.play(), self.rebind_control("right"))
+        )
+        
+        # ControlButton JUMP
+        self.rebindjump_button = Button(
+            text=f"Jump: {self.button_controls[2]}",
+            scale=(0.15, 0.075),
+            position=(0.2, 0.2, -0.3),
+            parent=self,
+            on_click=lambda: (buttonclick_sound.play(), self.rebind_control("jump"))
         )
         
         # Volume slider params for the label
@@ -847,6 +885,28 @@ class Options(Entity):
         self.sens = self.sensitivity.value
         global Sensitive
         Sensitive = round(self.sensitivity.value, 2)
+        
+    def rebind_control(self, control_name):
+        global buttoncontrols
+        # Get all keys currently being pressed
+        def after_delay(input_key):
+            print(input_key)
+            if input_key == 'control':
+                input_key = 'space'
+            if control_name == "left":
+                self.button_controls[0] = input_key
+            elif control_name == "right":
+                self.button_controls[1] = input_key
+            elif control_name == "jump":
+                self.button_controls[2] = input_key
+            self.rebindleft_button.text = f"Left: {self.button_controls[0]}"
+            self.rebindjump_button.text = f"Jump: {self.button_controls[2]}"
+            self.rebindright_button.text = f"Right: {self.button_controls[1]}"
+            buttoncontrols = self.button_controls
+            saveplayerdata()
+                
+        invoke(lambda: after_delay(returnheldkeys()), delay=0.5)
+        
 
     def show(self):
         self.enabled = True
@@ -1710,7 +1770,7 @@ def respawn_anim():
         playlock = False  # Re-enable player movement
 
 def input(key):
-    global currentztelpos, rot_locked, camera_locked, playlock
+    global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols
     # ---- Independent Controls ----
     #exit game
     if key == 'escape':
@@ -1760,7 +1820,7 @@ def input(key):
             else:
                 pass  # Ignore input if death animation is playing
             
-        if key == 'd':
+        if key == buttoncontrols[1]:
             # position shifts one lane further away from the camera
             # if at the furthest possible lane, instead stay in the same place
             if currentztelpos == 4:
@@ -1773,7 +1833,7 @@ def input(key):
             #play teleport sfx
             if not warp_sound.playing:
                 warp_sound.play()
-        if key == 'a':
+        if key == buttoncontrols[0]:
             # position shifts one lane closer to camera
             # if at the closest possible lane, instead stay in the same place
             if currentztelpos == 0:
@@ -1787,6 +1847,8 @@ def input(key):
             if not warp_sound.playing:
                 warp_sound.play()
         player.z = zTelPos[currentztelpos][2]
+
+    
 
 # Create and keep a reference for loadingscreen and levelprogress
 loading_screen = LoadingScreen()  
@@ -1835,11 +1897,15 @@ def prerendering():
     )
 
     def update_progress():
-        current_item[0] += 1
-        progress = current_item[0] / total_items
-        progress_bar.scale_x = 0.8 * progress
-        progress_bar.x = -0.4 + (0.4 * progress)
-        progress_text.text = f"Loading... {int(progress * 100)} percent"
+        try:
+            current_item[0] += 1
+            progress = current_item[0] / total_items
+            progress_bar.scale_x = 0.8 * progress
+            progress_bar.x = -0.4 + (0.4 * progress)
+            progress_text.text = f"Loading... {int(progress * 100)} percent"
+        except:
+            print("Error in preloading for update progress")
+            pass
 
     # Add spinning jump animation to the cube because I felt silly
     # Add jumping and spinning animation
@@ -1891,7 +1957,23 @@ def prerendering():
     # After all loading is done, schedule finish_loading
     invoke(finish_loading, delay=0.1)
 
-
+def returnheldkeys():
+    inputkey = []
+    inputkey = [k for k in held_keys.keys()]
+    try:
+        inputkey.remove("shift")
+    except:
+        pass
+    try:
+        inputkey.remove("left mouse")
+    except:
+        pass
+    try:
+        held_keys.clear()
+        return inputkey[-1]
+    except:
+        held_keys.clear()
+        return None
 
 def finish_loading():
     global main_menu, loading_screen
@@ -1928,7 +2010,7 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols
     
     if not playlock:
 
@@ -1942,7 +2024,7 @@ def game_logic_step(dt):
         player.x += move_x * dt
 
         # Jumping
-        if is_grounded and held_keys['space']:
+        if is_grounded and held_keys[buttoncontrols[2]]:
             velocity = 15  # Jump velocity
 
         # Apply gravity
@@ -1987,7 +2069,7 @@ def game_logic_step(dt):
             player.y += 0.3
             velocity = 0
     else:
-
+        
         # When immobilized, prevent all movement and physics
         velocity = 0
         is_grounded = False
