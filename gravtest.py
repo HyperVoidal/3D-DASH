@@ -344,6 +344,7 @@ current_mapcount = 1
 menu_music_playing = True
 buttoncontrols = ["a", "d", "space"] #left, right, jump IN THAT ORDER
 gravswapping = False
+existing_gravswap = None
 
 
 #Main systems for fps and update control
@@ -378,36 +379,113 @@ applyvolume(Volume=Volume)
 
 class GravSwapGate(Entity):
     def __init__(self, position, scale):
-        super().__init__(model='cube', scale=scale, collider='box', color=color.rgba(163, 0, 163, 0.7), position=position, shader=lit_with_shadows_shader)
+        super().__init__(
+            model='cube', 
+            scale=scale, 
+            collider='box', 
+            color=color.rgba(163, 0, 163, 0.7), 
+            position=position, 
+            shader=lit_with_shadows_shader
+        )
         self.entity_type = 'gravswap'
+        self.cooldown = False  # Add cooldown flag to prevent multiple triggers
+        
+    def start_cooldown(self):
+        self.cooldown = True
+        invoke(self.reset_cooldown, delay=1.0)  # Reset after 1 second
+        
+    def reset_cooldown(self):
+        self.cooldown = False
+        
     def destroy(self):
         self.disable()
         
-existing_gravswap = None
 def gravswap(mapname):
-    global velocity, gravity, existing_gravswap, gravswapping
-    if mapname == "Level3":
-        gate = GravSwapGate(position=(100, 5, 0), scale=(1, 16, 8))
+    global existing_gravswap
+    
+    # Initialize an empty list if it doesn't exist
+    if existing_gravswap is None:
+        existing_gravswap = []
+    
+    gates = []
+    
+    if mapname == "Level1":
+        gate = GravSwapGate(position=(30, 5, 0), scale=(1, 16, 10))
         gate.tag = 'gravswap_gate'
-        return gate
+        gates.append(gate)
+        
+        gate2 = GravSwapGate(position=(35, 5, 0), scale=(1, 16, 10))
+        gate2.tag = 'gravswap_gate'
+        gates.append(gate2)
+    
+    elif mapname == "Level3":
+        gate = GravSwapGate(position=(100, 5, 0), scale=(1, 16, 10))
+        gate.tag = 'gravswap_gate'
+        gates.append(gate)
+        
     elif mapname == "Level4":
-        gate = GravSwapGate(position=(50, 5, 0), scale=(1, 20, 10))
-        gate.tag = 'gravswap_gate'
-        return gate
-    else:
-        return None
+        gate1 = GravSwapGate(position=(50, 5, 0), scale=(1, 20, 10))
+        gate1.tag = 'gravswap_gate'
+        gates.append(gate1)
+        
+        gate2 = GravSwapGate(position=(150, 5, 0), scale=(1, 20, 10))
+        gate2.tag = 'gravswap_gate'
+        gates.append(gate2)
+
+    
+    # Store all created gates in the global list
+    existing_gravswap = gates
+    
+    return gates
     
 def gravswapper():
     global player, gravity, camera, return_rotation, gravswapping
     gravity = -gravity
     player.x += 2
     player.y += 1
-    return_rotation = return_rotation + Vec3(180, 0, 0)
+    
+    #Cool screen effect of moving purple quad to show direction of gravity
+    if gravity != abs(gravity):
+        swap_effect = Entity(model='quad',
+                        parent=camera.ui,
+                        scale = (2, 0.5),
+                        color= color.rgba(163, 0, 163, 0.7),
+                        position=(0, 1, -0.1)
+                        )
+        swap_effect.animate_position(
+        Vec3(0, -1.5, -0.1),
+        duration=0.5,
+        curve=curve.linear
+        )
+        invoke(destroy, swap_effect, delay=0.6)
+        
+    else:
+        swap_effect = Entity(model='quad',
+                         parent=camera.ui,
+                         scale = (2, 0.5),
+                         color= color.rgba(163, 0, 163, 0.7),
+                         position=(0, -1, -0.1)
+                         )
+            
+        swap_effect.animate_position(
+            Vec3(0, 1.5, -0.1),
+            duration=0.5,
+            curve=curve.linear
+        )
+        invoke(destroy, swap_effect, delay=0.6)
+    
+    
+    if gravity != abs(gravity):
+        return_rotation = Vec3(180, 45, 0)
+    else:
+        return_rotation = Vec3(0, 45, 0)
+        
+    
     invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) #Update the globals dictionary to set gravswapping to False
     
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
-    global GameMap, minx, maxx, sun
+    global GameMap, minx, maxx, sun, existing_gravswap
     x_scale = 2
     
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
@@ -436,7 +514,7 @@ def renderMap(map_name):
     GameMap.position = (shift, -0.5, 0)
     # Recalculate minx, maxx after shifting
     minx, maxx = calcpoints(GameMap)
-    gravswap(map_name)
+    existing_gravswap = gravswap(map_name)
     return GameMap
 
 
@@ -854,7 +932,6 @@ class LevelSelect(Entity):
             GameMap = None
         GameMap = renderMap(self.MAP)
         existing_gate = endgates(maxx)
-        existing_gravswap = gravswap(self.MAP)
         # Update level progress bar bounds
         levelprog.gamemap = GameMap
         levelprog.minX = minx
@@ -1251,9 +1328,10 @@ def reset_game_state(menu):
         destroy(gate)
     existing_gate.clear()
     
-    if existing_gravswap is not None:
-        destroy(existing_gravswap)
-    existing_gravswap = None
+    if existing_gravswap:
+        for gate in existing_gravswap:
+            destroy(gate)
+        existing_gravswap = None
     
     #return gravity to normal if resetting while player is gravflipped
     if gravity == abs(gravity):
@@ -2277,12 +2355,12 @@ def game_logic_step(dt):
         )
         
     if not gravswapping:
-        print("not gravswapping")
         if hit_info_death.hit and not death_anim.playing:
             print(f"Collision with entity {hit_info_death.entity}")
             if hasattr(hit_info_death.entity, 'tag'):
                 print(F"entity tag: {hit_info_death.entity.tag}")
-                if hit_info_death.entity.tag == 'gravswap_gate':
+                if hit_info_death.entity.tag == 'gravswap_gate' and not hit_info_death.entity.cooldown:
+                    hit_info_death.entity.start_cooldown()  # Start cooldown on this specific gate
                     gravswapping = True
                     gravswapper()
                     invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) 
