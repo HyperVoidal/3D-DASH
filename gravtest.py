@@ -49,7 +49,6 @@ def updatewindow(Value):
 def skinapply(skin):
     global player
     skin = (str(skin)).lower()  
-    print(f"Applying skin: {skin}")
     if skin == 'locked':
         print("Unlock this skin first!")
         return
@@ -58,18 +57,15 @@ def skinapply(skin):
         color_value = getattr(color, skin)
         player.texture = None
         player.color = color_value
-        print(f"Applied color: {color_value}")
     except AttributeError:
         # Not a color name, try as a texture path
         try:
-            print(f"Trying to load texture: {skin}")
             # Check if the file exists first
             if os.path.exists((f"{skin}.jpg")):
                 player.color = color.white  # Reset color to white for texture
                 player.texture = (f"{skin}.jpg")
-                print(f"Applied texture: {skin}")
             else:
-                print(f"Texture file not found: {skin}")
+                print(f"Texture file not found: {skin}. Swapping to backup.")
                 # Fallback to a 'skin not found' skin
                 player.texture = "skinnotfound"
                 player.color = color.white
@@ -84,7 +80,7 @@ def skinapply(skin):
         death_anim.texture = player.texture
         death_anim.color = player.color 
     except:
-        print("Skipping death animation texture update for funsies")
+        pass
 
     # Update skin data
     with open('skindata.json', 'r') as f:
@@ -165,9 +161,9 @@ sun.color = color.white
 sun.intensity = 2.0  # Increase intensity
 Sky(texture=skybox_image, scale=0.01)
 
-sun.shadow_map_size = (2048, 2048)  # Increase shadow map size
+""" sun.shadow_map_size = (2048, 2048)  # Increase shadow map size
 sun.shadow_map_resolution = (1024, 1024)
-sun.shadow_camera_size = 100
+sun.shadow_camera_size = 100 """
 
 ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
 
@@ -366,13 +362,17 @@ try:
     buttonclick_sound = Audio('MenuClick.mp3', autoplay=False, loop=False)
     menuback_music = Audio('MenuBGM.wav', autoplay=True, loop=True)
     warp_sound = Audio("playerwarpsfx.mp3", autoplay=False, loop=False)
+    death_sound = Audio("EXPLODE.mp3", autoplay=False, loop=False)
+    levelcomp_sound = Audio("LevelComplete.mp3", autoplay=False, loop=False)
 except:
     print("Warning: Some audio files not found. It is possible that certain SFX and Music will not play.")
 
 def applyvolume(Volume):
     buttonclick_sound.volume = Volume
     menuback_music.volume = Volume * 0.25
-    warp_sound.volume = Volume
+    warp_sound.volume = Volume * 2
+    death_sound.volume = Volume
+    levelcomp_sound.volume = Volume
 
 #Force load music and apply volume settings from Json file
 applyvolume(Volume=Volume)
@@ -409,28 +409,16 @@ def gravswap(mapname):
     
     gates = []
     
-    if mapname == "Level1":
-        gate = GravSwapGate(position=(30, 5, 0), scale=(1, 16, 10))
-        gate.tag = 'gravswap_gate'
-        gates.append(gate)
-        
-        gate2 = GravSwapGate(position=(35, 5, 0), scale=(1, 16, 10))
-        gate2.tag = 'gravswap_gate'
-        gates.append(gate2)
-    
-    elif mapname == "Level3":
+    if mapname == "Level3":
         gate = GravSwapGate(position=(100, 5, 0), scale=(1, 16, 10))
         gate.tag = 'gravswap_gate'
         gates.append(gate)
         
     elif mapname == "Level4":
-        gate1 = GravSwapGate(position=(50, 5, 0), scale=(1, 20, 10))
-        gate1.tag = 'gravswap_gate'
-        gates.append(gate1)
-        
-        gate2 = GravSwapGate(position=(150, 5, 0), scale=(1, 20, 10))
-        gate2.tag = 'gravswap_gate'
-        gates.append(gate2)
+        pass
+    
+    else:
+        pass
 
     
     # Store all created gates in the global list
@@ -439,10 +427,13 @@ def gravswap(mapname):
     return gates
     
 def gravswapper():
-    global player, gravity, camera, return_rotation, gravswapping
+    global player, gravity, camera, return_rotation, gravswapping, velocity
     gravity = -gravity
     player.x += 2
     player.y += 1
+    
+    #invert velocity direction
+    velocity = -velocity / abs(gravity)
     
     #Cool screen effect of moving purple quad to show direction of gravity
     if gravity != abs(gravity):
@@ -761,11 +752,9 @@ class MainMenu(Entity):
 
     def open_customisation(self):
         self.enable_menu_components(False)
-        print("Opening customisation menu...")  # Debug
         
         # If CUST exists, properly destroy it first
         if hasattr(self, 'CUST') and self.CUST is not None:
-            print("Destroying existing CUST...")  # Debug
             self.CUST.destroy()
             self.CUST = None
         
@@ -1072,11 +1061,9 @@ class Options(Entity):
             self.sensitivity.label.position = (-0.025, -0.06, 0)
     
     def on_windowsizingdrop_select(self, value):
-        print(f"Selected graphics: {value}")
         updategraphics(value)
     
     def on_windowprop_select(self, Value):
-        print(f"WindowSystemSelected: {Value}")
         updatewindow(Value)
     
     def set_volume(self):
@@ -1094,7 +1081,6 @@ class Options(Entity):
         global buttoncontrols
         # Get all keys currently being pressed
         def after_delay(input_key):
-            print(input_key)
             if input_key == 'control':
                 input_key = 'space'
             if control_name == "left":
@@ -1139,7 +1125,6 @@ class Options(Entity):
 
     def back(self):
         global returntogame
-        print(self.backtothing)
         self.hide()
         if self.backtothing:
             if not hasattr(app, 'pause_menu') or app.pause_menu is None:
@@ -1200,7 +1185,6 @@ class Customisation(Entity):
             else:
                 # This is an unlocked skin
                 namelist.append(key)
-        print(f"Skin list: {namelist}")
         # Create CustomisationButtons instance
         self.custbutt = CustomisationButtons(
             player, 
@@ -1211,8 +1195,6 @@ class Customisation(Entity):
         )
         self.custbutt.enabled = True
         self.custbutt.generate_buttons()
-        
-        print(f"Customisation created with {len(self.custbutt.allent)} button entities")  # Debug
         
     def updatethis(self, left, vel0, vel1):
         if left and self.enabled:
@@ -1237,13 +1219,11 @@ class Customisation(Entity):
                 self.custbutt.generate_buttons()
     
     def back_to_menu(self):
-        print("Customisation.back_to_menu() called")  # Debug
         self.cleanup()
         self.main_menu.CUST = None
         self.main_menu.rendermenu()
         
     def cleanup(self):
-        print("Customisation.cleanup() called")  # Debug
         self.enabled = False
         self.back_button.enabled = False
         self.playerrep.enabled = False
@@ -1254,7 +1234,6 @@ class Customisation(Entity):
             self.custbutt = None
         
     def destroy(self):
-        print("Customisation.destroy() called")  # Debug
         self.cleanup()
         super().destroy()
 
@@ -1477,16 +1456,22 @@ class PauseMenu(Entity):
             self.OptMen = None
 
     def show(self):
-        global playlock, paused
+        global playlock, paused, death_sound
         self.enabled = True
         paused = True
         self.resume_button.enabled = True
         self.mainmenubutton.enabled = True
         self.exittodesktop_button.enabled = True
         self.options_button.enabled = True
+        try:
+            if death_sound.playing:
+                death_sound.pause()
+        except:
+            #If death_sound fails to load
+            pass
         
     def hide(self):
-        global playlock, paused
+        global playlock, paused, death_sound
         self.enabled = False
         self.resume_button.enabled = False
         self.mainmenubutton.enabled = False
@@ -1494,6 +1479,8 @@ class PauseMenu(Entity):
         self.options_button.enabled = False
         playlock = True
         paused = True
+        if hasattr(death_sound, 'playing') and not death_sound.playing:
+            death_sound.play()
 
     def disable(self):
         global playlock, paused
@@ -1658,7 +1645,6 @@ class CustomisationButtons(Entity):
     def on_button_click(self, skin):
         # Handle button click event
         buttonclick_sound.play()
-        print(f'{skin} clicked')
         skinapply(skin)
         
         # Update the player representation in the customization menu
@@ -1871,6 +1857,7 @@ class AnimatedBackground(Entity):
             color=color.white,  # Keep white so texture shows properly
             parent=camera.ui,
             z=1,  # Behind other UI elements
+            shader=None,
             **kwargs
         )
         
@@ -1914,7 +1901,6 @@ class AnimatedBackground(Entity):
             if self.current_frame >= len(self.current_frames):
                 if self.is_intro:
                     # Switch to loop frames
-                    print("Switching to loop animation")  # Debug
                     self.is_intro = False
                     self.current_frames = self.loop_frames
                     self.current_frame = 0
@@ -1929,7 +1915,7 @@ class AnimatedBackground(Entity):
 
 def respawn_player():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity
-    player.position = Vec3(0, 5, 0)
+    player.position = Vec3(0, 30, 0)
     velocity = 0
     player.z = zTelPos[2][2]
     currentztelpos = 2
@@ -2032,6 +2018,12 @@ def input(key):
         if key == 'r':
             if not death_anim.playing:
                 player.disable()
+                try:
+                    if not death_sound.playing:
+                        death_sound.play()
+                except:
+                    #If death_sound fails to load
+                    pass
                 death_anim.play(player.position, finished_callback=respawn_player)
                 camera_locked = True  # Lock camera when player dies
                 rot_locked = True
@@ -2153,12 +2145,34 @@ def prerendering():
     jump_and_spin()
 
     # --- PRELOAD all animation frames to avoid first-run lag ---
+    # --- IMPROVED PRELOAD for death animation ---
+    preloaded_models = []
     for frame in death_anim_frames:
         update_progress()
-        e = Entity(model=frame, enabled=True)
-
-        invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
-
+        # Create entity with the same shader and texture that will be used in the actual animation
+        e = Entity(
+            model=frame, 
+            enabled=True,
+            shader=lit_with_shadows_shader,
+            texture=player.texture,
+            color=player.color
+        )
+        # Also preload the wireframe version
+        w = Entity(
+            model=frame,
+            enabled=True,
+            wireframe=True,
+            color=color.black
+        )
+        
+        # Force a complete render cycle
+        preloaded_models.append((e, w))
+    
+    # After rendering one complete frame with all models, clean up
+    for e, w in preloaded_models:
+        destroy(e)
+        destroy(w)
+    
     death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=player.texture, color=player.color, shader=lit_with_shadows_shader)
     death_anim.disable()
 
@@ -2229,7 +2243,7 @@ def update():
 
 def game_logic_step(dt):
     global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols, gravswapping, existing_gravswap
-    
+
     if not playlock:
 
         #disable music if playing
@@ -2356,9 +2370,7 @@ def game_logic_step(dt):
         
     if not gravswapping:
         if hit_info_death.hit and not death_anim.playing:
-            print(f"Collision with entity {hit_info_death.entity}")
             if hasattr(hit_info_death.entity, 'tag'):
-                print(F"entity tag: {hit_info_death.entity.tag}")
                 if hit_info_death.entity.tag == 'gravswap_gate' and not hit_info_death.entity.cooldown:
                     hit_info_death.entity.start_cooldown()  # Start cooldown on this specific gate
                     gravswapping = True
@@ -2366,6 +2378,8 @@ def game_logic_step(dt):
                     invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) 
                     return
                 elif hit_info_death.entity.tag == 'endgate':
+                    if not levelcomp_sound.playing:
+                        levelcomp_sound.play()
                     levelprog.percentagecompletion = "100.0"
                     #Force respawn the player to avoid multi-checking the winscreen function over multiple iterations
                     reset_game_state(False)
@@ -2386,7 +2400,27 @@ def game_logic_step(dt):
             camera_locked = True
             rot_locked = True
             playlock = True
+            try:
+                if not death_sound.playing:
+                    death_sound.play()
+            except:
+                pass
             death_anim.play(player.position, finished_callback=respawn_player)
+            
+    #player OOB check for levels. This would need to be changed if I add lowered levels but for now it will suffice.
+    if player.y < 0 or player.y > 100 and not death_anim.playing:
+        print("Player OOB! Murder time :D")
+        player.disable()
+        player.position = (0, 30, 0) #GET THEM OUT OF THERE
+        camera_locked = True
+        rot_locked = True
+        playlock = True
+        try:
+            if not death_sound.playing:
+                death_sound.play()
+        except:
+            pass
+        death_anim.play(player.position, finished_callback=respawn_player)
 
     #Map Integrity Verification
     if GameMap.collider:
