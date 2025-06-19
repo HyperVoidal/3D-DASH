@@ -415,7 +415,17 @@ def gravswap(mapname):
         gates.append(gate)
         
     elif mapname == "Level4":
-        pass
+        gate = GravSwapGate(position=(32.5, 5, 0), scale=(1, 10, 10))
+        gate.tag = 'gravswap_gate'
+        gates.append(gate)
+
+        gate2 = GravSwapGate(position=(56, 5, 2), scale=(1, 10, 2))
+        gate2.tag = 'gravswap_gate'
+        gates.append(gate2)
+
+        gate3 = GravSwapGate(position=(88, 7.5, 0), scale=(1, 4.5, 2))
+        gate3.tag = 'gravswap_gate'
+        gates.append(gate3)
     
     else:
         pass
@@ -430,10 +440,12 @@ def gravswapper():
     global player, gravity, camera, return_rotation, gravswapping, velocity
     gravity = -gravity
     player.x += 2
-    player.y += 1
+    if gravity < 0:
+        player.y -= 1
+    else:
+        player.y += 1
     
-    #invert velocity direction
-    velocity = -velocity / abs(gravity)
+    velocity = 0
     
     #Cool screen effect of moving purple quad to show direction of gravity
     if gravity != abs(gravity):
@@ -467,9 +479,9 @@ def gravswapper():
     
     
     if gravity != abs(gravity):
-        return_rotation = Vec3(180, 45, 0)
-    else:
         return_rotation = Vec3(0, 45, 0)
+    else:
+        return_rotation = Vec3(180, 45, 0)
         
     
     invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) #Update the globals dictionary to set gravswapping to False
@@ -1988,6 +2000,9 @@ def input(key):
     # ---- Must be in game ----
     #pause menu
     if game_ready:
+        if key == 'p':
+            #print player position
+            print(player.position)
         if key == 'tab':
             # Ensure pause_menu exists
             if not hasattr(app, 'pause_menu') or app.pause_menu is None:
@@ -2361,7 +2376,7 @@ def game_logic_step(dt):
         deathboxcast_d = 0.5
         hit_info_death = boxcast(
             origin=player.position + Vec3(0, -0.5, 0),
-            direction=Vec3(-1, 0, 0),
+            direction=Vec3(1, 0, 0),
             distance=deathboxcast_d,
             thickness=(player.scale_x / 2, player.scale_y/2),
             ignore=(player,),
