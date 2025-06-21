@@ -14,6 +14,18 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw
 from ursina.mesh import Mesh
+from pathlib import Path
+
+resource_path = Path(__file__).parent.absolute()
+
+def setUNIXpath(resource_path):
+    resource_path = str(resource_path)
+    resource_path = resource_path.replace("\\", "/")
+    resource_path = resource_path.replace(":", "")
+    resource_path = "/" + resource_path
+    return resource_path
+    
+    
 
 #cache clearing function - clean up the compressed models folder on startup
 def cache_clear(folder):
@@ -52,23 +64,38 @@ def skinapply(skin):
     if skin == 'locked':
         print("Unlock this skin first!")
         return
+    
     # First check if it's a color name
     try:
         color_value = getattr(color, skin)
         player.texture = None
         player.color = color_value
+        print(f"Applied color: {skin}")
     except AttributeError:
         # Not a color name, try as a texture path
         try:
-            # Check if the file exists first
-            if os.path.exists((f"{skin}.jpg")):
+            # Construct the texture path using relative path - full path causes errors for some reason
+            texture_path = f"Assets/Textures/{skin}.jpg"
+            
+            print(f"Looking for texture at: {texture_path}")
+            
+            # Check if the file exists
+            if texture_path.exists():
                 player.color = color.white  # Reset color to white for texture
-                player.texture = (f"{skin}.jpg")
+                player.texture = str(texture_path)
+                print(f"Applied texture: {texture_path}")
             else:
-                print(f"Texture file not found: {skin}. Swapping to backup.")
-                # Fallback to a 'skin not found' skin
-                player.texture = "skinnotfound"
-                player.color = color.white
+                print(f"Texture file not found: {texture_path}")
+                # Try alternative paths or fallback|
+                fallback_path = "Assets/Textures/skinnotfound.png"
+                if fallback_path.exists():
+                    player.texture = str(fallback_path)
+                    player.color = color.white
+                else:
+                    # Final fallback to color
+                    player.texture = None
+                    player.color = color.orange
+                    print("Using fallback color")
                 
         except Exception as e:
             print(f"Error applying texture: {e}")
@@ -83,7 +110,7 @@ def skinapply(skin):
         pass
 
     # Update skin data
-    with open('skindata.json', 'r') as f:
+    with open(f'{resource_path}/Assets/Datafiles/skindata.json', 'r') as f:
         data = json.load(f)
     
     # Reset all values to 0
@@ -91,7 +118,6 @@ def skinapply(skin):
         data[key][0] = 0
     
     # Set the selected skin to 1
-    # Check if the skin exists in the data (case-insensitive)
     skin_found = False
     for key in data:
         if key.lower() == skin.lower():
@@ -102,11 +128,12 @@ def skinapply(skin):
     if not skin_found:
         print(f"Warning: skin '{skin}' not found in database")
     
-    with open('skindata.json', 'w') as f:
+    with open(f'{resource_path}/Assets/Datafiles/skindata.json', 'w') as f:
         json.dump(data, f)
 
+
 def load_playerskins():
-    with open ('skindata.json', 'r') as f:
+    with open(f'{resource_path}/Assets/Datafiles/skindata.json', 'r') as f:
         data = json.load(f)
     
     # find what skin is equipped
@@ -121,7 +148,7 @@ window.show_ursina_splash = True
 window.title = "3D DASH"
 #remember to set a custom icon when exporting this program to an exe, you can't change taskbar icon in normal ursina
 window.icon = "window_icon.ico"
-skybox_image = load_texture("sky_sunset.jpg")
+skybox_image = load_texture("Assets/Textures/sky_sunset.jpg")
 
 
 # --- PRE-APP SETUP AND VARIABLES ---
@@ -169,7 +196,7 @@ ambient = AmbientLight(color=color.rgba(50, 50, 50, 0.1))
 
 app.fog_density = 0.1  # Much lighter fog
 
-with open ('skindata.json', 'r') as f:
+with open (f'{resource_path}/Assets/Datafiles/skindata.json', 'r') as f:
     skindata = json.load(f)
 
 player = Entity(model='cube', 
@@ -305,7 +332,7 @@ mainmenuloop_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(
 exitmen_frames = [f"Anims/MenuFrames/{str(i).zfill(4)}.png" for i in range(160, 250)]
 
 #Import Json file
-with open ("level_data.json", "r") as f:
+with open (f"{resource_path}/Assets/Datafiles/level_data.json", "r") as f:
     data = json.load(f)
        
 # Gravity and movement variables
@@ -348,22 +375,22 @@ fixed_dt = 1/60  # 60 updates per second
 accumulator = 0
 
 #Options menu systems
-with open ("playerdata.json", "r") as f:
+with open (f"{resource_path}/Assets/Datafiles/playerdata.json", "r") as f:
     data = json.load(f)
 Volume = data["Volume"]
 Sensitive = data["Sensitivity"]
 buttoncontrols = data["ButtonControls"]
 returntogame = False
 game_ready = False
-Text.default_font = "2TECH2.ttf"
+Text.default_font = f"{setUNIXpath(resource_path)}/Assets/Font/2TECH2.ttf"
 
 #SFX and Music Loading
 try:
-    buttonclick_sound = Audio('MenuClick.mp3', autoplay=False, loop=False)
-    menuback_music = Audio('MenuBGM.wav', autoplay=True, loop=True)
-    warp_sound = Audio("playerwarpsfx.mp3", autoplay=False, loop=False)
-    death_sound = Audio("EXPLODE.mp3", autoplay=False, loop=False)
-    levelcomp_sound = Audio("LevelComplete.mp3", autoplay=False, loop=False)
+    buttonclick_sound = Audio('Assets/Sounds/MenuClick.mp3', autoplay=False, loop=False)
+    menuback_music = Audio('Assets/Sounds/MenuBGM.wav', autoplay=True, loop=True)
+    warp_sound = Audio("Assets/Sounds/playerwarpsfx.mp3", autoplay=False, loop=False)
+    death_sound = Audio("Assets/Sounds/EXPLODE.mp3", autoplay=False, loop=False)
+    levelcomp_sound = Audio("Assets/Sounds/LevelComplete.mp3", autoplay=False, loop=False)
 except:
     print("Warning: Some audio files not found. It is possible that certain SFX and Music will not play.")
 
@@ -371,7 +398,7 @@ def applyvolume(Volume):
     buttonclick_sound.volume = Volume
     menuback_music.volume = Volume * 0.25
     warp_sound.volume = Volume * 2
-    death_sound.volume = Volume
+    death_sound.volume = Volume / 3
     levelcomp_sound.volume = Volume
 
 #Force load music and apply volume settings from Json file
@@ -555,11 +582,11 @@ def get_hsv_color(fraction):
     return rgb # Return only RGB, ignore alpha
 
 def savehigh(mapcount, perccomp):
-    with open ('level_data.json', 'r') as file:
+    with open (f'{resource_path}/Assets/Datafiles/level_data.json', 'r') as file:
         data = json.load(file)
     if float(data[f"Level{mapcount}"]) < float(perccomp):
         data[f"Level{mapcount}"] = (f"{perccomp}")
-        with open ('level_data.json', 'w') as file:
+        with open (f"{resource_path}/Assets/Datafiles/level_data.json", 'w') as file:
             json.dump(data, file)
     else:
         pass
@@ -571,13 +598,13 @@ def saveplayerdata():
         "Volume": Volume,
         "ButtonControls": buttoncontrols
     }
-    with open ("playerdata.json", "w") as file:
+    with open (f"{resource_path}/Assets/Datafiles/playerdata.json", "w") as file:
         json.dump(data, file)
 
 def unlock_skins():
-    with open("skindata.json", "r") as f:
+    with open(f"{resource_path}/Assets/Datafiles/skindata.json", "r") as f:
         skinsdata = json.load(f)
-    with open("level_data.json", "r") as f:
+    with open(f"{resource_path}/Assets/Datafiles/level_data.json", "r") as f:
         levelsdata = json.load(f)
     
     # Get all skin keys as a list and slice from index 12 (13th item) onwards
@@ -591,7 +618,7 @@ def unlock_skins():
         if level_key in levelsdata and levelsdata[level_key] == "100.0":
             skinsdata[skin][1] = 1
     
-    with open ("skindata.json", "w") as f:
+    with open (f"{resource_path}/Assets/Datafiles/skindata.json", "w") as f:
         json.dump(skinsdata, f)
 
     return
@@ -737,7 +764,7 @@ class MainMenu(Entity):
         self.animated_background.play()
 
         if not self.text:
-            self.text = Text("3D-DASH", origin=(0, -1.5), font="Techno.ttf", scale=2.5, background=True, parent=self)
+            self.text = Text("3D-DASH", origin=(0, -1.5), font=f"{setUNIXpath(resource_path)}/Assets/Font/Techno.ttf", scale=2.5, background=True, parent=self)
         if not self.start_button:
             self.start_button = Button(text="Level Select", scale=(0.25, 0.05), position=(0, -0.05), parent=self, on_click=lambda: (buttonclick_sound.play(), self.open_level_select()))
         if not self.options_button:
@@ -804,7 +831,7 @@ class LevelSelect(Entity):
         
         self.left_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(-0.3, 0), parent=self, on_click=lambda: (buttonclick_sound.play(), self.previous_level()))
         self.left_arrow = Entity(
-            model='arrowNOBG.obj',
+            model='Assets/Objects/arrowNOBG.obj',
             scale=(0.03, 0.03, 0.03),
             parent=self.left_button,
             position=(0, 0, -0.01),
@@ -815,7 +842,7 @@ class LevelSelect(Entity):
 
         self.right_button = Button(text="", color=color.rgba(128, 128, 128, 0.75), scale=(0.1, 0.1), position=(0.3, 0), parent=self, on_click=lambda: (buttonclick_sound.play(), self.next_level()))
         self.right_arrow = Entity(
-            model='arrowNOBG.obj',
+            model='Assets/Objects/arrowNOBG.obj',
             scale=(0.03, 0.03, 0.03),  
             parent=self.right_button,
             position=(0, 0, -0.01),    
@@ -824,7 +851,7 @@ class LevelSelect(Entity):
             texture=None
         )
         self.levelperc = Entity(
-            model = 'ProgressBar.obj',
+            model = 'Assets/Objects/ProgressBar.obj',
             scale=(0.09, 0.03, 0.03),
             position=(0, -0.075, -0.1),
             rotation=(90, 0, 0),
@@ -846,7 +873,7 @@ class LevelSelect(Entity):
         self.levelpercentage = Text(text="0.0", parent=self, position=(-0.03, -0.065, -0.2), color=color.black, enabled=True)
         
         # Level data loading
-        with open ("level_data.json", "r") as f:
+        with open (f"{resource_path}/Assets/Datafiles/level_data.json", "r") as f:
             data = json.load(f)
         
         levelpercent = data[f"Level{self.mapcount}"]
@@ -864,7 +891,7 @@ class LevelSelect(Entity):
     
     def updatelevelperc(self):
         # Level data loading
-        with open ("level_data.json", "r") as f:
+        with open (f"{resource_path}/Assets/Datafiles/level_data.json", "r") as f:
             data = json.load(f)
         
         levelpercent = data[f"Level{self.mapcount}"]
@@ -957,7 +984,7 @@ class Options(Entity):
         playlock = True
         self.button_controls = buttoncontrols
         
-        with open ("playerdata.json", "r") as file:
+        with open (f"{resource_path}/Assets/Datafiles/playerdata.json", "r") as file:
             self.data = json.load(file)
         
         super().__init__(
@@ -1005,7 +1032,7 @@ class Options(Entity):
         # Dropdown menu for window sizing
         self.windowsizingdrop = SimpleDropdown(
             label='Graphics',
-            options=['1920x1080', "1600x900", "1536x960", "1280x720"],
+            options=["1600x900", "1536x960", "1280x720", "800x600"],
             position=(-0.15, 0.1, -0.1),
             parent=self,
             on_select=self.on_windowsizingdrop_select
@@ -1186,7 +1213,7 @@ class Customisation(Entity):
         add_wireframe_border(self.playerrep, color.dark_gray, 0.02)
         
         
-        with open ('skindata.json', 'r') as f:
+        with open (f"{resource_path}/Assets/Datafiles/skindata.json", 'r') as f:
             data = json.load(f)
         namelist = []
         for key in data:
@@ -1265,7 +1292,7 @@ class LevelProgress(Entity):
         self.minX = minx
         #create percentage bar entity ONCE
         self.BarFrame = Entity(
-            model = 'ProgressBar.obj',
+            model = 'Assets/Objects/ProgressBar.obj',
             scale=(0.09, 0.03, 0.03),
             position=(0, 0.45, 3),
             rotation=(90, 0, 0),
@@ -1531,7 +1558,7 @@ class CustomisationButtons(Entity):
         self.removeall()
         
         # Load skin data for tooltips
-        with open('skindata.json', 'r') as f:
+        with open(f"{resource_path}/Assets/Datafiles/skindata.json", 'r') as f:
             self.skin_data = json.load(f)
         
         # Calculate rows and columns
@@ -1579,7 +1606,7 @@ class CustomisationButtons(Entity):
                     lock_icon = Entity(
                         parent=button_container,
                         model='quad',
-                        texture='LockIconImage.png',
+                        texture='Assets/Textures/LockIconImage.png',
                         scale=(0.75, 0.5),
                         position = (0, 0, -0.02),
                         enabled=True
@@ -1592,15 +1619,15 @@ class CustomisationButtons(Entity):
                             skin_preview.color= color_value
                             skin_preview.texture = None
                         else:
-                            if os.path.exists(f"{skin_name}.jpg"):
+                            if os.path.exists(f"Assets/Textures/{skin_name}.jpg"):
                                 skin_preview.color = color.white
-                                skin_preview.texture = f"{skin_name}.jpg"
+                                skin_preview.texture = f"Assets/Textures/{skin_name}.jpg"
                             else:
                                 skin_preview.color = None
-                                skin_preview.texture = f"skinnotfound.png"
+                                skin_preview.texture = f"Assets/Textures/skinnotfound.png"
                     except:
                         skin_preview.color = color.white
-                        skin_preview.texture = f"skinnotfound.png"
+                        skin_preview.texture = f"Assets/Textures/skinnotfound.png"
                         
                 #wireframe preview border
                 add_wireframe_border(skin_preview, color.black, 0.05)
@@ -1760,7 +1787,7 @@ class Tooltip(Entity):
             origin=(0, 0),
             position = (0, 0, -0.05),
             scale=(4, 15),
-            font="Poppins-Medium.ttf",
+            font=f"{setUNIXpath(resource_path)}/Assets/Font/Poppins-Medium.ttf",
             enabled = True
         )
         
