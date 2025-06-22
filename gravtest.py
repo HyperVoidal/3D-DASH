@@ -74,22 +74,25 @@ def skinapply(skin):
     except AttributeError:
         # Not a color name, try as a texture path
         try:
-            # Construct the texture path using relative path - full path causes errors for some reason
-            texture_path = f"Assets/Textures/{skin}.jpg"
+            # Use relative path for Ursina (it prefers relative paths)
+            relative_texture_path = f"Assets/Textures/{skin}.jpg"
+            # Use absolute path for file existence check
+            absolute_texture_path = resource_path / "Assets" / "Textures" / f"{skin}.jpg"
             
-            print(f"Looking for texture at: {texture_path}")
+            print(f"Looking for texture at: {absolute_texture_path}")
             
-            # Check if the file exists
-            if texture_path.exists():
+            # Check if the file exists using absolute path
+            if absolute_texture_path.exists():
                 player.color = color.white  # Reset color to white for texture
-                player.texture = str(texture_path)
-                print(f"Applied texture: {texture_path}")
+                player.texture = relative_texture_path  # Use relative path for Ursina
+                print(f"Applied texture: {relative_texture_path}")
             else:
-                print(f"Texture file not found: {texture_path}")
-                # Try alternative paths or fallback|
-                fallback_path = "Assets/Textures/skinnotfound.png"
-                if fallback_path.exists():
-                    player.texture = str(fallback_path)
+                print(f"Texture file not found: {absolute_texture_path}")
+                # Try alternative paths or fallback
+                fallback_absolute = resource_path / "Assets" / "Textures" / "skinnotfound.png"
+                fallback_relative = "Assets/Textures/skinnotfound.png"
+                if fallback_absolute.exists():
+                    player.texture = fallback_relative
                     player.color = color.white
                 else:
                     # Final fallback to color
@@ -385,14 +388,16 @@ game_ready = False
 Text.default_font = f"{setUNIXpath(resource_path)}/Assets/Font/2TECH2.ttf"
 
 #SFX and Music Loading
-try:
-    buttonclick_sound = Audio('Assets/Sounds/MenuClick.mp3', autoplay=False, loop=False)
-    menuback_music = Audio('Assets/Sounds/MenuBGM.wav', autoplay=True, loop=True)
-    warp_sound = Audio("Assets/Sounds/playerwarpsfx.mp3", autoplay=False, loop=False)
-    death_sound = Audio("Assets/Sounds/EXPLODE.mp3", autoplay=False, loop=False)
-    levelcomp_sound = Audio("Assets/Sounds/LevelComplete.mp3", autoplay=False, loop=False)
-except:
-    print("Warning: Some audio files not found. It is possible that certain SFX and Music will not play.")
+def load_audio():
+    global buttonclick_sound, menuback_music, warp_sound, death_sound, levelcomp_sound
+    try:
+        buttonclick_sound = Audio('Assets/Sounds/MenuClick.mp3', autoplay=False, loop=False)
+        menuback_music = Audio('Assets/Sounds/MenuBGM.wav', autoplay=True, loop=True)
+        warp_sound = Audio("Assets/Sounds/playerwarpsfx.mp3", autoplay=False, loop=False)
+        death_sound = Audio("Assets/Sounds/EXPLODE.mp3", autoplay=False, loop=False)
+        levelcomp_sound = Audio("Assets/Sounds/LevelComplete.mp3", autoplay=False, loop=False)
+    except:
+        print("Warning: Some audio files not found. It is possible that certain SFX and Music will not play.")
 
 def applyvolume(Volume):
     buttonclick_sound.volume = Volume
@@ -401,8 +406,7 @@ def applyvolume(Volume):
     death_sound.volume = Volume / 3
     levelcomp_sound.volume = Volume
 
-#Force load music and apply volume settings from Json file
-applyvolume(Volume=Volume)
+
 
 class GravSwapGate(Entity):
     def __init__(self, position, scale):
@@ -1262,7 +1266,11 @@ class Customisation(Entity):
         self.main_menu.CUST = None
         self.main_menu.rendermenu()
         
-    def cleanup(self):
+    def cleanup(self):     
+        if hasattr(self.playerrep, 'wireframe_border'):
+            destroy(self.playerrep.wireframe_border)
+            self.playerrep.wireframe_border = None
+    
         self.enabled = False
         self.back_button.enabled = False
         self.playerrep.enabled = False
@@ -1302,9 +1310,9 @@ class LevelProgress(Entity):
             enabled=True
         )
         self.loadingbar = Entity(
-            model = 'cube',
+            model ='Cube',
             position = (0, 0.45, 0),
-            rotation = (90, 0, 0),
+            rotation=(90, 0, 0),
             color=color.orange,
             parent=self.BarFrame,
             enabled=True
@@ -1528,7 +1536,10 @@ class PauseMenu(Entity):
         self.mainmenubutton.enabled = False
         self.exittodesktop_button.enabled = False
         self.options_button.enabled = False
-        playlock = False
+        
+        #Only unlock if player is actually enabled and visible
+        if player.enabled and player.visible and not death_anim.playing:
+            playlock = False
         paused = False
 
 #Rather than a name, fill  the button with a cube of the texture/colour of the button's assigned skin
@@ -1593,7 +1604,7 @@ class CustomisationButtons(Entity):
                 
                 skin_preview = Entity(
                     parent=button_container,
-                    model='cube',
+                    model='quad',
                     scale=(0.7, 0.7, 0.7),
                     position=(0, 0, -0.01),
                     rotation=(0, 0, 0),
@@ -1953,34 +1964,49 @@ class AnimatedBackground(Entity):
 
 
 def respawn_player():
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity, return_rotation
+    
+    # Reset player position and physics
     player.position = Vec3(0, 30, 0)
     velocity = 0
     player.z = zTelPos[2][2]
     currentztelpos = 2
     
-    if gravity != abs(gravity):
-        pass
-    else:
+    # Reset gravity to normal if it's flipped
+    if gravity == abs(gravity):  # If gravity is positive (flipped)
         gravity = -gravity
-
-    #Force stop playing sounds
+    
+    # Force stop playing sounds
     if warp_sound.playing:
         warp_sound.stop()
 
-    camera.position = Vec3(-20, 20, -20)
-    camera.rotation = Vec3(0, 45, 0)
+    # Proper camera reset based on gravity state
+    if gravity != abs(gravity):  # Normal gravity
+        camera.position = Vec3(-20, 20, -20)
+        camera.rotation = Vec3(0, 45, 0)
+        camera_loc = player.position + Vec3(-20, 20, -20)
+        return_rotation = Vec3(0, 45, 0)
+    else:  # Flipped gravity
+        camera.position = Vec3(-20, -20, -20)
+        camera.rotation = Vec3(180, 45, 0)
+        camera_loc = player.position + Vec3(-20, -20, -20)
+        return_rotation = Vec3(180, 45, 0)
+    
+    # Force camera to look at player
     camera.look_at(player.position)
-    camera_loc = player.position + Vec3(-20, 20, -20)
 
-    # Allow movement after respawn animation - circumvents pausing error during death animation
+    # FIXED: Proper sequencing of player re-enabling
+    # First make player visible
+    player.visible = True
+    
+    # Then enable player (but only if not paused)
     if not paused:
         player.enable()
-        camera_locked = False
-        rot_locked = False
-        playlock = False  
-
-    invoke(lambda: setattr(player, 'visible', True), delay=0.01)
+        
+    # Unlock camera and movement
+    camera_locked = False
+    rot_locked = False
+    playlock = False
 
 def checkrotation(from_pos, to_pos):
     temp = Entity(position=from_pos)
@@ -1990,27 +2016,44 @@ def checkrotation(from_pos, to_pos):
     return rot
 
 def respawn_anim():
-    global camera_locked, rot_locked, playlock
+    global camera_locked, rot_locked, playlock, camera_loc, return_rotation
+    
+    # Don't run respawn animation if camera is already being reset
+    if camera_locked and rot_locked:
+        return
+        
     camera_locked = True
     rot_locked = True
-    playlock = True  # Immobilize player during respawn animation
-    deathpos = camera.position
-    camerarot = camera.rotation
-    playercampos = player.position + Vec3(-20, 20, -20)
-    return_rotation = checkrotation(playercampos, player.position)
+    playlock = True
     
-    camera_loc = lerp(deathpos, playercampos, time.dt * return_speed)
-    camera.position = camera_loc
-    camerarot = camera.rotation
-    camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
-    camera.rotation = camera_rot
-
-    # Check if camera is close enough to target position and rotation
-    if (distance(camera.position, playercampos) < 0.1 and 
-        distance(camera.rotation, return_rotation) < 0.5):
+    # Calculate target position based on current gravity
+    if gravity != abs(gravity):
+        target_camera_pos = player.position + Vec3(-20, 20, -20)
+        return_rotation = Vec3(0, 45, 0)
+    else:
+        target_camera_pos = player.position + Vec3(-20, -20, -20)
+        return_rotation = Vec3(180, 45, 0)
+    
+    # FIXED: Use smooth interpolation with bounds checking
+    current_distance = distance(camera.position, target_camera_pos)
+    rotation_distance = distance(camera.rotation, return_rotation)
+    
+    if current_distance > 0.1:
+        camera_loc = lerp(camera.position, target_camera_pos, time.dt * return_speed)
+        camera.position = camera_loc
+    
+    if rotation_distance > 0.5:
+        camera.rotation = lerp(camera.rotation, return_rotation, time.dt * return_speed)
+    
+    # Check if animation is complete
+    if current_distance < 0.1 and rotation_distance < 0.5:
+        # Force final position and unlock
+        camera.position = target_camera_pos
+        camera.rotation = return_rotation
+        camera.look_at(player.position)
         camera_locked = False
         rot_locked = False
-        playlock = False  # Re-enable player movement
+        playlock = False
 
 def input(key):
     global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols
@@ -2059,16 +2102,24 @@ def input(key):
         #reset - instakills and respawns player
         if key == 'r':
             if not death_anim.playing:
+                # Save progress before reset
+                savehigh(current_mapcount, levelprog.percentagecompletion)
+                
+                # Disable and hide player
                 player.disable()
+                player.visible = False
+                
                 try:
                     if not death_sound.playing:
                         death_sound.play()
                 except:
-                    #If death_sound fails to load
                     pass
-                death_anim.play(player.position, finished_callback=respawn_player)
-                camera_locked = True  # Lock camera when player dies
+                
+                # Lock controls and start death animation
+                camera_locked = True
                 rot_locked = True
+                playlock = True
+                death_anim.play(player.position, finished_callback=respawn_player)
             else:
                 pass  # Ignore input if death animation is playing
             
@@ -2118,6 +2169,10 @@ def prerendering():
     total_items = len(death_anim_frames) + len(startmen_frames) + len(mainmenuloop_frames) + 2
     current_item = [0]  # Use list to allow modification in nested functions
     original_pos = Vec3(0.5, -0.3, 0)
+
+    #Force load music and apply volume settings from Json file
+    load_audio()
+    applyvolume(Volume=Volume)
 
     #loading screen ui features
     # Create progress UI
@@ -2258,8 +2313,7 @@ def finish_loading():
     main_menu = MainMenu()
     main_menu.rendermenu()
 
-renderthread = threading.Thread(target=prerendering, daemon=True)
-renderthread.start()
+prerendering()
 
 
 # --- Main Update Loop ---
@@ -2414,16 +2468,14 @@ def game_logic_step(dt):
         if hit_info_death.hit and not death_anim.playing:
             if hasattr(hit_info_death.entity, 'tag'):
                 if hit_info_death.entity.tag == 'gravswap_gate' and not hit_info_death.entity.cooldown:
-                    hit_info_death.entity.start_cooldown()  # Start cooldown on this specific gate
+                    hit_info_death.entity.start_cooldown()
                     gravswapping = True
                     gravswapper()
-                    invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) 
                     return
                 elif hit_info_death.entity.tag == 'endgate':
                     if not levelcomp_sound.playing:
                         levelcomp_sound.play()
                     levelprog.percentagecompletion = "100.0"
-                    #Force respawn the player to avoid multi-checking the winscreen function over multiple iterations
                     reset_game_state(False)
                     respawn_player()
                     player.disable()
@@ -2431,14 +2483,12 @@ def game_logic_step(dt):
                     savehigh(current_mapcount, "100.0")
                     unlock_skins()
                     return
-                else:
-                    pass
-                
-            #Save highscore
+                    
+            # Save highscore
             savehigh(current_mapcount, levelprog.percentagecompletion)
 
-            #Trigger death animation
             player.disable()
+            # Set camera lock only when starting death animation
             camera_locked = True
             rot_locked = True
             playlock = True
@@ -2447,21 +2497,36 @@ def game_logic_step(dt):
                     death_sound.play()
             except:
                 pass
+            
+            
             death_anim.play(player.position, finished_callback=respawn_player)
             
     #player OOB check for levels. This would need to be changed if I add lowered levels but for now it will suffice.
-    if player.y < 0 or player.y > 100 and not death_anim.playing:
+    # Replace the OOB check section with:
+    if (player.y < 0 or player.y > 100) and not death_anim.playing:
         print("Player OOB! Murder time :D")
+        
+        # Save highscore before respawn
+        savehigh(current_mapcount, levelprog.percentagecompletion)
+        
+        # Disable and hide player
         player.disable()
-        player.position = (0, 30, 0) #GET THEM OUT OF THERE
+        player.visible = False
+        
+        # Move player to safe position for death animation
+        player.position = Vec3(0, 30, 0)
+        
+        # Lock controls
         camera_locked = True
         rot_locked = True
         playlock = True
+        
         try:
             if not death_sound.playing:
                 death_sound.play()
         except:
             pass
+        
         death_anim.play(player.position, finished_callback=respawn_player)
 
     #Map Integrity Verification
