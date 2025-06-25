@@ -39,6 +39,10 @@ def updategraphics(sizing):
     value = sizing.split("x")
     numval = (int(value[0]), int(value[1]))
     window.size = numval
+    def center_after_resize():
+        window.center_on_screen()
+    
+    invoke(center_after_resize, delay=0.05)
 
 #Bug with the window sizing - switching to fullscreen and then back out from a value that isnt 1920x1080
 #will leave the value of the dropdown select at the non 1920x1080 variable. This has no effect on experience besides
@@ -57,6 +61,10 @@ def updatewindow(Value):
         window.size = retainsizing
     else:
         pass
+    def center_after_resize():
+        window.center_on_screen()
+    
+    invoke(center_after_resize, delay=0.05)
 
 def skinapply(skin):
     global player
@@ -519,8 +527,12 @@ def gravswapper():
     
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
-    global GameMap, minx, maxx, sun, existing_gravswap
+    global GameMap, minx, maxx, sun, existing_gravswap, camera, player
     x_scale = 2
+    
+    camera.position = Vec3(-20, 20, -20)  # Initial camera position
+    camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
+    camera.look_at(player.position) # Initial look at
     
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
     GameMap.scale = (x_scale, 1, 1.5)
@@ -759,6 +771,7 @@ class MainMenu(Entity):
         self.customise_button = None
         self.quit_button = None
         self.customise_back_button = None
+        self.reset_button = None
 
     def rendermenu(self):
         global playlock
@@ -777,6 +790,8 @@ class MainMenu(Entity):
             self.customise_button = Button(text="Wardrobe", scale=(0.25, 0.05), position=(0, -0.15), parent=self, on_click=lambda: (buttonclick_sound.play(), self.open_customisation()))
         if not self.quit_button:
             self.quit_button = Button(text="Quit", scale=(0.25, 0.05), position=(0, -0.2), parent=self, on_click=lambda: (buttonclick_sound.play(), self.quit_game()))
+        if not self.reset_button:
+            self.reset_button = Button(text="Reset all data", scale=(0.15, 0.025), position=(-0.3, -0.2), parent=self,  on_click=lambda: (buttonclick_sound.play(), self.resetdata()))
         self.enable_menu_components(True)
 
     def enable_menu_components(self, enabled=True):
@@ -785,6 +800,7 @@ class MainMenu(Entity):
         if self.options_button: self.options_button.enabled = enabled
         if self.customise_button: self.customise_button.enabled = enabled
         if self.quit_button: self.quit_button.enabled = enabled
+        if self.reset_button: self.reset_button.enabled = enabled
 
     def open_level_select(self):
         self.enable_menu_components(False)
@@ -812,6 +828,79 @@ class MainMenu(Entity):
             self.OptMen = Options(self, Volume)
         self.OptMen.backtothing = False
         self.OptMen.show()
+    
+    def resetdata(self):
+        global Volume, Sensitive, buttoncontrols
+        #Reset playerdata file to defaults
+        with open(f"{resource_path}/Assets/Datafiles/playerdata.json", "w") as file:
+            json.dump({"Volume": 0.5, "Sensitivity": 0.5, "ButtonControls": ["a", "d", "space"]}, file)
+        
+        #Reset level_data file to defaults of 0 on each level
+        with open (f'{resource_path}/Assets/Datafiles/level_data.json', 'r') as file:
+            data = json.load(file)
+        for i in range(len(data.keys())):
+            data[f"Level{i+1}"] = "0.0"
+        with open(f"{resource_path}/Assets/Datafiles/level_data.json", "w") as file:
+            json.dump(data, file)
+        
+        #Reset skin data file for skins 13 and above to 'locked' (value of 0)
+        with open(f"{resource_path}/Assets/Datafiles/skindata.json", "r") as file:
+            data = json.load(file)
+        all_skins = list(data.keys())
+        skins_13_and_above = all_skins[12:]  # This gets skins from index 12 onwards
+        
+        # Reset unlock status for skins 13 and above
+        for skin_key in skins_13_and_above:
+            if skin_key in data:
+                data[skin_key][1] = 0  # Set to locked
+        
+        # Equip the first skin (assuming it exists)
+        first_skin = all_skins[0] if all_skins else None
+        if first_skin and first_skin in data:
+            data[first_skin][0] = 1  # Equip first skin
+        
+        with open(f"{resource_path}/Assets/Datafiles/skindata.json", "w") as file:
+            json.dump(data, file)
+        
+        # Update all variables for reset components
+        Volume = 0.5
+        Sensitive = 0.5
+        buttoncontrols = ["a", "d", "space"]
+        
+        # Apply the default skin to the player
+        if first_skin:
+            skinapply(first_skin)
+        
+        # Apply default volume
+        applyvolume(Volume=Volume)
+        
+        # Update UI components if they exist
+        # Update options menu sliders
+        if hasattr(self.OptMen, 'volume_slider') and self.OptMen.volume_slider:
+            self.OptMen.volume_slider.value = Volume
+        if hasattr(self.OptMen, 'sensitivity') and self.OptMen.sensitivity:
+            self.OptMen.sensitivity.value = Sensitive
+        
+        # Update button control text
+        if hasattr(self.OptMen, 'rebindleft_button') and self.OptMen.rebindleft_button:
+            self.OptMen.rebindleft_button.text = f"Left: {buttoncontrols[0]}"
+        if hasattr(self.OptMen, 'rebindright_button') and self.OptMen.rebindright_button:
+            self.OptMen.rebindright_button.text = f"Right: {buttoncontrols[1]}"
+        if hasattr(self.OptMen, 'rebindjump_button') and self.OptMen.rebindjump_button:
+            self.OptMen.rebindjump_button.text = f"Jump: {buttoncontrols[2]}"
+        
+        # Update level select screen if it exists
+        if hasattr(self, 'LSS') and self.LSS:
+            self.LSS.updatelevelperc()
+        
+        # Update customization menu if it exists
+        if hasattr(self, 'CUST') and self.CUST:
+            # Force recreate the customization menu to refresh skin data
+            self.CUST.cleanup()
+            self.CUST = None
+            # The menu will be recreated when opened next time
+        
+        print("Data reset")
 
     def quit_game(self):
         quit()
@@ -1052,7 +1141,7 @@ class Options(Entity):
         )
         
         self.save = Button(
-            text="Save Options",
+            text="Save",
             scale=(0.1, 0.1),
             position=(0.35, 0.2, -0.3),
             parent=self,
@@ -1181,6 +1270,7 @@ class Options(Entity):
             returntogame=False
             
 class Customisation(Entity):
+    
     def __init__(self, main_menu):
         self.main_menu = main_menu
         self.player = player
@@ -2170,10 +2260,6 @@ def prerendering():
     current_item = [0]  # Use list to allow modification in nested functions
     original_pos = Vec3(0.5, -0.3, 0)
 
-    #Force load music and apply volume settings from Json file
-    load_audio()
-    applyvolume(Volume=Volume)
-
     #loading screen ui features
     # Create progress UI
     progress_bar = Entity(
@@ -2242,34 +2328,16 @@ def prerendering():
     jump_and_spin()
 
     # --- PRELOAD all animation frames to avoid first-run lag ---
-    # --- IMPROVED PRELOAD for death animation ---
-    preloaded_models = []
     for frame in death_anim_frames:
         update_progress()
-        # Create entity with the same shader and texture that will be used in the actual animation
-        e = Entity(
-            model=frame, 
-            enabled=True,
-            shader=lit_with_shadows_shader,
-            texture=player.texture,
-            color=player.color
-        )
-        # Also preload the wireframe version
-        w = Entity(
-            model=frame,
-            enabled=True,
-            wireframe=True,
-            color=color.black
-        )
+        e = Entity(model=frame, enabled=True)
+
+        invoke(e.disable, delay=0.1)  # Let it render for one frame, then disable
         
-        # Force a complete render cycle
-        preloaded_models.append((e, w))
-    
-    # After rendering one complete frame with all models, clean up
-    for e, w in preloaded_models:
-        destroy(e)
-        destroy(w)
-    
+    #Force Load Audio
+    load_audio()
+    applyvolume(Volume=Volume)
+
     death_anim = BakedMeshAnimation(death_anim_frames, scale=(1,1,1), texture=player.texture, color=player.color, shader=lit_with_shadows_shader)
     death_anim.disable()
 
@@ -2285,7 +2353,7 @@ def prerendering():
 
     # After all loading is done, schedule finish_loading
     invoke(finish_loading, delay=0.1)
-
+    
 def returnheldkeys():
     inputkey = []
     inputkey = [k for k in held_keys.keys()]
@@ -2313,7 +2381,8 @@ def finish_loading():
     main_menu = MainMenu()
     main_menu.rendermenu()
 
-prerendering()
+renderthread = threading.Thread(target=prerendering, daemon=True)
+renderthread.start()
 
 
 # --- Main Update Loop ---
