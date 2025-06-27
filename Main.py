@@ -1,6 +1,5 @@
 from ursina import *
 from ursina import Button, Slider, destroy, DirectionalLight, lerp, distance
-from direct.actor.Actor import Actor
 from ursina.shaders import lit_with_shadows_shader, basic_lighting_shader
 from panda3d.core import RenderState
 from math import radians, cos, sin, isnan, isinf
@@ -11,12 +10,65 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import json
 import os
-import numpy as np
 from PIL import Image, ImageDraw
 from ursina.mesh import Mesh
 from pathlib import Path
 
+current_levelnum = 4
 resource_path = Path(__file__).parent.absolute()
+
+def dataverify_repair():
+    # Define your required files and their default data
+    datafiles = {
+        "Assets/Datafiles/playerdata.json": {
+            "Volume": 0.5,
+            "Sensitivity": 0.5,
+            "ButtonControls": ["a", "d", "space"]
+        },
+        "Assets/Datafiles/level_data.json": {
+            f"Level{i + 1}": "0.0" for i in range(current_levelnum)  # Adjust number of levels as needed
+        },
+        "Assets/Datafiles/skindata.json": {
+            "Orange": [1, 1],
+            "Red": [0, 1], 
+            "Yellow": [0, 1], 
+            "Green": [0, 1], 
+            "Azure": [0, 1], 
+            "Magenta": [0, 1], 
+            "Black": [0, 1], 
+            "White": [0, 1], 
+            "Pink": [0, 1], 
+            "Lime": [0, 1], 
+            "Cyan": [0, 1], 
+            "Turquoise": [0, 1], 
+            "Clear": [0, 0], 
+            "StripeBlue": [0, 0], 
+            "Warm_Glow": [0, 0], 
+            "shit.jpg": [0, 0]
+            # Needs to be personally updated. While I wish I could have it all depend on the json file, data integrity is crucial.
+        }
+    }
+
+    for rel_path, default_data in datafiles.items():
+        abs_path = resource_path / rel_path
+        # Ensure parent directory exists
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        needs_repair = False
+        if not abs_path.exists():
+            needs_repair = True
+        else:
+            try:
+                with open(abs_path, "r") as f:
+                    json.load(f)
+            except Exception:
+                needs_repair = True
+        if needs_repair:
+            print(f"Repairing or creating {abs_path}")
+            with open(abs_path, "w") as f:
+                json.dump(default_data, f, indent=2)
+
+# Call before any other file I/O
+dataverify_repair()
 
 def setUNIXpath(resource_path):
     resource_path = str(resource_path)
@@ -365,6 +417,11 @@ camera_locked = False
 rot_locked = False
 currentztelpos = 2
 
+#potato mode flags
+shaderstatus = True
+playerdeathstatus = True
+menuanimstatus = True
+
 #Map Data
 MAPLIST = []
 for key in data:
@@ -527,7 +584,7 @@ def gravswapper():
     
 #ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
-    global GameMap, minx, maxx, sun, existing_gravswap, camera, player
+    global GameMap, minx, maxx, sun, existing_gravswap, camera, player, shaderstatus
     x_scale = 2
     
     camera.position = Vec3(-20, 20, -20)  # Initial camera position
@@ -544,11 +601,13 @@ def renderMap(map_name):
         GameMap.collision = None
     GameMap.collision = GameMap.model
 
-        
-    GameMap.shader = lit_with_shadows_shader
-    GameMap.cast_shadows = True
-    GameMap.receive_shadows = True
-        
+    if shaderstatus == True:
+        GameMap.shader = lit_with_shadows_shader
+        GameMap.cast_shadows = True
+        GameMap.receive_shadows = True
+    else:
+        pass
+    
     # Temporarily position at origin to calculate min/max
     GameMap.position = (0, -0.5, 0)
     minx, maxx = calcpoints(GameMap)
@@ -753,17 +812,24 @@ class LoadingScreen(Entity):
 # Level Select, options, and player customisation
 class MainMenu(Entity):
     def __init__(self):
+        global menuanimstatus
         super().__init__(
             model='Quad',
             scale=(2, 2),
-            color=color.rgba(255, 255, 255, 0),  # rgb + opacity
+            color=color.rgba(0, 0, 255, 0),  # rgb + opacity
             parent=camera.ui,
             enabled=False
         )
+        
         # Create animated background
-        self.animated_background = AnimatedBackground(startmen_frames, mainmenuloop_frames)
-        self.animated_background.parent = self
-        self.animated_background.z = 0.1
+        if menuanimstatus == False:
+            self.color=color.rgba(0, 0, 255, 100)
+            self.animated_background = None
+        else:
+            self.animated_background = AnimatedBackground(startmen_frames, mainmenuloop_frames)
+            self.animated_background.parent = self
+            self.animated_background.z = 0.1
+        
 
         self.text = None
         self.start_button = None
@@ -772,14 +838,19 @@ class MainMenu(Entity):
         self.quit_button = None
         self.customise_back_button = None
         self.reset_button = None
+        self.potatomode_button = None
 
     def rendermenu(self):
-        global playlock
+        #globals
+        global playlock, menuanimstatus
         playlock = True
         self.enabled = True
+        
+        #only play animation if it exists and is allowed to play
+        if hasattr(self, 'animated_background') and self.animated_background and menuanimstatus:
+            self.animated_background.play()
 
-        self.animated_background.play()
-
+        #Construct the menu button controls
         if not self.text:
             self.text = Text("3D-DASH", origin=(0, -1.5), font=f"{setUNIXpath(resource_path)}/Assets/Font/Techno.ttf", scale=2.5, background=True, parent=self)
         if not self.start_button:
@@ -792,6 +863,8 @@ class MainMenu(Entity):
             self.quit_button = Button(text="Quit", scale=(0.25, 0.05), position=(0, -0.2), parent=self, on_click=lambda: (buttonclick_sound.play(), self.quit_game()))
         if not self.reset_button:
             self.reset_button = Button(text="Reset all data", scale=(0.15, 0.025), position=(-0.3, -0.2), parent=self,  on_click=lambda: (buttonclick_sound.play(), self.resetdata()))
+        if not self.potatomode_button:
+            self.potatomode_button = Button(text="Potato Mode", scale=(0.15, 0.025), position=(0.3, -0.2), parent=self, on_click=lambda: (buttonclick_sound.play(), self.potatomode()))
         self.enable_menu_components(True)
 
     def enable_menu_components(self, enabled=True):
@@ -801,6 +874,54 @@ class MainMenu(Entity):
         if self.customise_button: self.customise_button.enabled = enabled
         if self.quit_button: self.quit_button.enabled = enabled
         if self.reset_button: self.reset_button.enabled = enabled
+        if self.potatomode_button: self.potatomode_button.enabled = enabled
+        
+    def potatomode(self):
+        global shaderstatus, playerdeathstatus, menuanimstatus, death_anim, GameMap
+        
+        # Toggle all potato mode flags
+        shaderstatus = not shaderstatus
+        playerdeathstatus = not playerdeathstatus
+        menuanimstatus = not menuanimstatus
+        
+        # Handle menu background animation
+        if hasattr(self, 'animated_background') and self.animated_background:
+            if not menuanimstatus:  # Potato mode ON
+                self.animated_background.stop()
+                destroy(self.animated_background)
+                self.animated_background = None
+                self.color = color.rgba(0, 0, 255, 100)  # Solid background
+            else:  # Potato mode OFF - this won't trigger in current logic, see fix below
+                pass
+        elif menuanimstatus:  # Potato mode OFF, need to create animation
+            self.color = color.rgba(0, 0, 255, 0)  # Transparent background
+            self.animated_background = AnimatedBackground(startmen_frames, mainmenuloop_frames)
+            self.animated_background.parent = self
+            self.animated_background.z = 0.1
+            if self.enabled:
+                self.animated_background.play()
+        
+        # Handle map shaders
+        if GameMap and hasattr(GameMap, 'shader'):
+            if shaderstatus:
+                GameMap.shader = lit_with_shadows_shader
+                GameMap.cast_shadows = True
+                GameMap.receive_shadows = True
+            else:
+                GameMap.shader = None
+                GameMap.cast_shadows = False
+                GameMap.receive_shadows = False
+        
+        # Handle player shader
+        if shaderstatus:
+            player.shader = lit_with_shadows_shader
+        else:
+            player.shader = None
+        
+        print(f"Potato Mode: {'ON' if not menuanimstatus else 'OFF'}")
+
+        
+        
 
     def open_level_select(self):
         self.enable_menu_components(False)
@@ -876,18 +997,19 @@ class MainMenu(Entity):
         
         # Update UI components if they exist
         # Update options menu sliders
-        if hasattr(self.OptMen, 'volume_slider') and self.OptMen.volume_slider:
-            self.OptMen.volume_slider.value = Volume
-        if hasattr(self.OptMen, 'sensitivity') and self.OptMen.sensitivity:
-            self.OptMen.sensitivity.value = Sensitive
-        
-        # Update button control text
-        if hasattr(self.OptMen, 'rebindleft_button') and self.OptMen.rebindleft_button:
-            self.OptMen.rebindleft_button.text = f"Left: {buttoncontrols[0]}"
-        if hasattr(self.OptMen, 'rebindright_button') and self.OptMen.rebindright_button:
-            self.OptMen.rebindright_button.text = f"Right: {buttoncontrols[1]}"
-        if hasattr(self.OptMen, 'rebindjump_button') and self.OptMen.rebindjump_button:
-            self.OptMen.rebindjump_button.text = f"Jump: {buttoncontrols[2]}"
+        if hasattr(self, 'OptMen'):
+            if hasattr(self.OptMen, 'volume_slider') and self.OptMen.volume_slider:
+                self.OptMen.volume_slider.value = Volume
+            if hasattr(self.OptMen, 'sensitivity') and self.OptMen.sensitivity:
+                self.OptMen.sensitivity.value = Sensitive
+            
+            # Update button control text
+            if hasattr(self.OptMen, 'rebindleft_button') and self.OptMen.rebindleft_button:
+                self.OptMen.rebindleft_button.text = f"Left: {buttoncontrols[0]}"
+            if hasattr(self.OptMen, 'rebindright_button') and self.OptMen.rebindright_button:
+                self.OptMen.rebindright_button.text = f"Right: {buttoncontrols[1]}"
+            if hasattr(self.OptMen, 'rebindjump_button') and self.OptMen.rebindjump_button:
+                self.OptMen.rebindjump_button.text = f"Jump: {buttoncontrols[2]}"
         
         # Update level select screen if it exists
         if hasattr(self, 'LSS') and self.LSS:
@@ -945,7 +1067,7 @@ class LevelSelect(Entity):
         )
         self.levelperc = Entity(
             model = 'Assets/Objects/ProgressBar.obj',
-            scale=(0.09, 0.03, 0.03),
+            scale=(0.08, 0.03, 0.03),
             position=(0, -0.075, -0.1),
             rotation=(90, 0, 0),
             parent=self,
@@ -1309,6 +1431,7 @@ class Customisation(Entity):
         
         with open (f"{resource_path}/Assets/Datafiles/skindata.json", 'r') as f:
             data = json.load(f)
+            
         namelist = []
         for key in data:
             #update a new list for all of the skins. If a skin has "0" in the second entry of it's value list, replace with the name 'locked'
@@ -1636,11 +1759,13 @@ class PauseMenu(Entity):
 #This also means adding a lock icon to the ones without skins, though that would be the same as a grey colour + lock texture
 #and a tooltip that shows the name of the skin (already implemented)
 class CustomisationButtons(Entity):
-    def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, skindata=[]):
+    def __init__(self, player, position=(0, 0, 0), scale=(0.1, 0.1), parent=None, skindata=None):
         super().__init__(parent=parent)
         self.player = player
         self.position = position
         self.button_size = scale
+        if skindata is None:
+            skindata = []
         self.skindata = skindata
         self.totalskins = len(skindata)
         self.numofrow = 2
@@ -1939,6 +2064,7 @@ class BakedMeshAnimation(Entity):
     playing = False
 
     def __init__(self, frame_files, frame_time=0.03, **kwargs):
+        global playerdeathstatus
         super().__init__(model=frame_files[0], **kwargs)
         self.frame_files = frame_files
         self.frame_time = frame_time
@@ -1946,6 +2072,12 @@ class BakedMeshAnimation(Entity):
         self.time_accum = 0
         self.playing = False
         self.finished_callback = None
+        if playerdeathstatus == True:
+            self.simple_mode = False
+        else:
+            self.simple_mode = True
+        print(playerdeathstatus)
+        print(self.simple_mode)
         
         # Create wireframe overlay animation
         self.wireframe_overlay = Entity(
@@ -1962,32 +2094,78 @@ class BakedMeshAnimation(Entity):
 
     def play(self, position, finished_callback=None):
         self.position = position
-        self.current_frame = 0
-        self.time_accum = 0
-        self.model = self.frame_files[0]
-        self.wireframe_overlay.model = self.frame_files[0]
+        self.finished_callback = finished_callback
         self.playing = True
         self.enable()
+        self.current_frame = 0
+        self.time_accum = 0
+        
+        if self.simple_mode:
+            return
+        # Full animation
+        self.model = self.frame_files[0]
+        self.wireframe_overlay.model = self.frame_files[0]
         self.wireframe_overlay.enable()
-        self.finished_callback = finished_callback
+    
+    def set_simple_mode(self, simple=True):
+        self.simple_mode = simple
+        if simple:
+            self.wireframe_overlay.disable()
 
     def update(self):
+        global player, paused
+        if playerdeathstatus == True:
+            self.simple_mode = False
+        else:
+            self.simple_mode = True
         if not hasattr(self, 'playing') or not self.playing:
             return
-        self.time_accum += time.dt
-        if self.time_accum >= self.frame_time:
-            self.time_accum = 0
-            self.current_frame += 1
-            if self.current_frame < len(self.frame_files):
-                # Update both the main animation and wireframe overlay
-                self.model = self.frame_files[self.current_frame]
-                self.wireframe_overlay.model = self.frame_files[self.current_frame]
-            else:
-                self.playing = False
-                self.disable()
-                self.wireframe_overlay.disable()
-                if self.finished_callback:
-                    self.finished_callback()
+        if paused:
+            return
+        if self.simple_mode:
+            self.wireframe_overlay.disable()
+            self.time_accum += time.dt
+            if self.time_accum >= self.frame_time * (4/3):
+                self.time_accum = 0
+                self.current_frame += 1
+                self.model = 'cube'
+                self.scale = (1, 1, 1)
+                self.texture = player.texture
+                self.color = player.color
+                if self.current_frame < 40:
+                    x = self.current_frame
+                    #function for a custom in-out animation using 1/|f(x)| principle on a quadratic function
+                    #full equation is 15(11/((3*|(-5*((((x/2)-10)**2) - 2)/9) - 10|) + 1))
+                    fx = (-5 * (((x/2) - 4)**2))-2
+                    f2x = 3 * abs((fx/9)-10)
+                    f3x = 50 * (11/f2x + 1)
+                    scale_factor = f3x - 59.5
+                    if scale_factor <= 0:
+                        scale_factor = 0.01
+                    self.scale = Vec3(scale_factor, scale_factor, scale_factor)
+                    
+                else:
+                    self.playing = False
+                    self.disable()
+                    self.scale = Vec3(1, 1, 1)
+                    self.color = player.color
+                    if self.finished_callback:
+                        self.finished_callback()
+        else:
+            self.time_accum += time.dt
+            if self.time_accum >= self.frame_time:
+                self.time_accum = 0
+                self.current_frame += 1
+                if self.current_frame < len(self.frame_files):
+                    # Update both the main animation and wireframe overlay
+                    self.model = self.frame_files[self.current_frame]
+                    self.wireframe_overlay.model = self.frame_files[self.current_frame]
+                else:
+                    self.playing = False
+                    self.disable()
+                    self.wireframe_overlay.disable()
+                    if self.finished_callback:
+                        self.finished_callback()
 
 class AnimatedBackground(Entity):
     def __init__(self, intro_frames, loop_frames, frame_time=0.033, **kwargs):
@@ -2054,7 +2232,10 @@ class AnimatedBackground(Entity):
 
 
 def respawn_player():
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity, return_rotation
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity, return_rotation, paused
+    
+    if paused:
+        return
     
     # Reset player position and physics
     player.position = Vec3(0, 30, 0)
@@ -2146,7 +2327,7 @@ def respawn_anim():
         playlock = False
 
 def input(key):
-    global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols
+    global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols, playerdeathstatus
     # ---- Independent Controls ----
     #exit game
     if key == 'escape':
@@ -2247,7 +2428,7 @@ def input(key):
 loading_screen = LoadingScreen()  
 levelprog = LevelProgress()
 
-# set a function to prerender all variables
+# set a function to all variables
 # apply it to a thread and call the loading screen while it's running
 #upon finish, invoke finish_loading to hide the loading screen and set game_ready to True
 
@@ -2407,7 +2588,7 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols, gravswapping, existing_gravswap
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols, gravswapping, existing_gravswap, playerdeathstatus
 
     if not playlock:
 
