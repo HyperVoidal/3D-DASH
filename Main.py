@@ -14,11 +14,11 @@ from PIL import Image, ImageDraw
 from ursina.mesh import Mesh
 from pathlib import Path
 
-current_levelnum = 4
 resource_path = Path(__file__).parent.absolute()
 
+#Detect and fix any missing .json files
 def dataverify_repair():
-    # Define your required files and their default data
+    #List of files to check and their important information (set to defaults)
     datafiles = {
         "Assets/Datafiles/playerdata.json": {
             "Volume": 0.5,
@@ -26,7 +26,7 @@ def dataverify_repair():
             "ButtonControls": ["a", "d", "space"]
         },
         "Assets/Datafiles/level_data.json": {
-            f"Level{i + 1}": "0.0" for i in range(current_levelnum)  # Adjust number of levels as needed
+            f"Level{i + 1}": "0.0" for i in range(4)  # Adjust number of levels as needed
         },
         "Assets/Datafiles/skindata.json": {
             "Orange": [1, 1],
@@ -63,7 +63,6 @@ def dataverify_repair():
             except Exception:
                 needs_repair = True
         if needs_repair:
-            print(f"Repairing or creating {abs_path}")
             with open(abs_path, "w") as f:
                 json.dump(default_data, f, indent=2)
 
@@ -96,9 +95,6 @@ def updategraphics(sizing):
     
     invoke(center_after_resize, delay=0.05)
 
-#Bug with the window sizing - switching to fullscreen and then back out from a value that isnt 1920x1080
-#will leave the value of the dropdown select at the non 1920x1080 variable. This has no effect on experience besides
-#being an odd visual bug that needs fixing.
 def updatewindow(Value):
     retainsizing = window.size
     if Value == "Fullscreen":
@@ -122,7 +118,6 @@ def skinapply(skin):
     global player
     skin = (str(skin)).lower()  
     if skin == 'locked':
-        print("Unlock this skin first!")
         return
     
     # First check if it's a color name
@@ -130,7 +125,6 @@ def skinapply(skin):
         color_value = getattr(color, skin)
         player.texture = None
         player.color = color_value
-        print(f"Applied color: {skin}")
     except AttributeError:
         # Not a color name, try as a texture path
         try:
@@ -139,15 +133,11 @@ def skinapply(skin):
             # Use absolute path for file existence check
             absolute_texture_path = resource_path / "Assets" / "Textures" / f"{skin}.jpg"
             
-            print(f"Looking for texture at: {absolute_texture_path}")
-            
             # Check if the file exists using absolute path
             if absolute_texture_path.exists():
                 player.color = color.white  # Reset color to white for texture
                 player.texture = relative_texture_path  # Use relative path for Ursina
-                print(f"Applied texture: {relative_texture_path}")
             else:
-                print(f"Texture file not found: {absolute_texture_path}")
                 # Try alternative paths or fallback
                 fallback_absolute = resource_path / "Assets" / "Textures" / "skinnotfound.png"
                 fallback_relative = "Assets/Textures/skinnotfound.png"
@@ -158,7 +148,6 @@ def skinapply(skin):
                     # Final fallback to color
                     player.texture = None
                     player.color = color.orange
-                    print("Using fallback color")
                 
         except Exception as e:
             print(f"Error applying texture: {e}")
@@ -582,7 +571,6 @@ def gravswapper():
     
     invoke(lambda: globals().update({'gravswapping': False}), delay=0.5) #Update the globals dictionary to set gravswapping to False
     
-#ERROR IN LEVEL 2 - Panda3D detects objects too close together. Take a look at level 2 and see any invalid collision
 def renderMap(map_name):
     global GameMap, minx, maxx, sun, existing_gravswap, camera, player, shaderstatus
     x_scale = 2
@@ -918,7 +906,6 @@ class MainMenu(Entity):
         else:
             player.shader = None
         
-        print(f"Potato Mode: {'ON' if not menuanimstatus else 'OFF'}")
 
         
         
@@ -1021,8 +1008,6 @@ class MainMenu(Entity):
             self.CUST.cleanup()
             self.CUST = None
             # The menu will be recreated when opened next time
-        
-        print("Data reset")
 
     def quit_game(self):
         quit()
@@ -2076,8 +2061,6 @@ class BakedMeshAnimation(Entity):
             self.simple_mode = False
         else:
             self.simple_mode = True
-        print(playerdeathstatus)
-        print(self.simple_mode)
         
         # Create wireframe overlay animation
         self.wireframe_overlay = Entity(
@@ -2341,9 +2324,6 @@ def input(key):
     # ---- Must be in game ----
     #pause menu
     if game_ready:
-        if key == 'p':
-            #print player position
-            print(player.position)
         if key == 'tab':
             # Ensure pause_menu exists
             if not hasattr(app, 'pause_menu') or app.pause_menu is None:
@@ -2754,7 +2734,6 @@ def game_logic_step(dt):
     #player OOB check for levels. This would need to be changed if I add lowered levels but for now it will suffice.
     # Replace the OOB check section with:
     if (player.y < 0 or player.y > 100) and not death_anim.playing:
-        print("Player OOB! Murder time :D")
         
         # Save highscore before respawn
         savehigh(current_mapcount, levelprog.percentagecompletion)
