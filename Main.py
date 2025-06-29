@@ -871,7 +871,10 @@ class MainMenu(Entity):
         shaderstatus = not shaderstatus
         playerdeathstatus = not playerdeathstatus
         menuanimstatus = not menuanimstatus
-        
+
+        if 'death_anim' in globals() and death_anim:
+            death_anim.reset()
+
         # Handle menu background animation
         if hasattr(self, 'animated_background') and self.animated_background:
             if not menuanimstatus:  # Potato mode ON
@@ -1541,7 +1544,10 @@ class LevelProgress(Entity):
             
 
 def reset_game_state(menu):
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc, menu_music_playing, existing_gravswap, gravity
+    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc, menu_music_playing, existing_gravswap, gravity, death_anim
+
+    if 'death_anim' in globals() and death_anim:
+        death_anim.reset()
 
     if GameMap:
         GameMap.disable()
@@ -1586,6 +1592,7 @@ def reset_game_state(menu):
     playlock = False
     game_ready = False
     accumulator = 0
+    paused = False
 
     if menu == True:
         # Show main menu (reuse existing)
@@ -2094,6 +2101,17 @@ class BakedMeshAnimation(Entity):
         self.simple_mode = simple
         if simple:
             self.wireframe_overlay.disable()
+    
+    def reset(self):
+        self.playing = False
+        self.current_frame = 0
+        self.time_accum = 0
+        self.disable()
+        if hasattr(self, 'wireframe_overlay'):
+            self.wireframe_overlay.disable()
+        if self.simple_mode:
+            self.scale = Vec3(1, 1, 1)
+            self.color = player.color
 
     def update(self):
         global player, paused
@@ -2217,9 +2235,10 @@ class AnimatedBackground(Entity):
 def respawn_player():
     global velocity, currentztelpos, camera_locked, rot_locked, playlock, paused, camera_loc, gravity, return_rotation, paused
     
-    if paused:
-        return
+    paused = False
     
+    if 'death_anim' in globals() and death_anim:
+        death_anim.reset()
     # Reset player position and physics
     player.position = Vec3(0, 30, 0)
     velocity = 0
@@ -2261,6 +2280,7 @@ def respawn_player():
     camera_locked = False
     rot_locked = False
     playlock = False
+    paused = False
 
 def checkrotation(from_pos, to_pos):
     temp = Entity(position=from_pos)
@@ -2310,7 +2330,7 @@ def respawn_anim():
         playlock = False
 
 def input(key):
-    global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols, playerdeathstatus
+    global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols, playerdeathstatus, paused
     # ---- Independent Controls ----
     #exit game
     if key == 'escape':
@@ -2370,6 +2390,7 @@ def input(key):
                 camera_locked = True
                 rot_locked = True
                 playlock = True
+                paused = False  #unpause before starting to avoid potatomode swapping conflict errors
                 death_anim.play(player.position, finished_callback=respawn_player)
             else:
                 pass  # Ignore input if death animation is playing
@@ -2568,7 +2589,7 @@ def update():
         accumulator -= fixed_dt
 
 def game_logic_step(dt):
-    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols, gravswapping, existing_gravswap, playerdeathstatus
+    global velocity, is_grounded, currentztelpos, camera_loc, camera_locked, rot_locked, Sensitive, playlock, menu_music_playing, buttoncontrols, gravswapping, existing_gravswap, playerdeathstatus, paused
 
     if not playlock:
 
@@ -2728,7 +2749,7 @@ def game_logic_step(dt):
             except:
                 pass
             
-            
+            paused = False  #unpause before starting to avoid potatomode swapping conflict errors
             death_anim.play(player.position, finished_callback=respawn_player)
             
     #player OOB check for levels. This would need to be changed if I add lowered levels but for now it will suffice.
@@ -2755,7 +2776,7 @@ def game_logic_step(dt):
                 death_sound.play()
         except:
             pass
-        
+        paused = False  #unpause before starting to avoid potatomode swapping conflict errors
         death_anim.play(player.position, finished_callback=respawn_player)
 
     #Map Integrity Verification
