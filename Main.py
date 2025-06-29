@@ -195,7 +195,7 @@ def load_playerskins():
             break
 
 
-app = Ursina()
+app = Ursina(development_mode=False, use_ingame_console=True)
 window.show_ursina_splash = True
 window.title = "3D DASH"
 #remember to set a custom icon when exporting this program to an exe, you can't change taskbar icon in normal ursina
@@ -2281,53 +2281,6 @@ def respawn_player():
     rot_locked = False
     playlock = False
     paused = False
-
-def checkrotation(from_pos, to_pos):
-    temp = Entity(position=from_pos)
-    temp.look_at(to_pos)
-    rot = temp.rotation
-    destroy(temp)
-    return rot
-
-def respawn_anim():
-    global camera_locked, rot_locked, playlock, camera_loc, return_rotation
-    
-    # Don't run respawn animation if camera is already being reset
-    if camera_locked and rot_locked:
-        return
-        
-    camera_locked = True
-    rot_locked = True
-    playlock = True
-    
-    # Calculate target position based on current gravity
-    if gravity != abs(gravity):
-        target_camera_pos = player.position + Vec3(-20, 20, -20)
-        return_rotation = Vec3(0, 45, 0)
-    else:
-        target_camera_pos = player.position + Vec3(-20, -20, -20)
-        return_rotation = Vec3(180, 45, 0)
-    
-    # FIXED: Use smooth interpolation with bounds checking
-    current_distance = distance(camera.position, target_camera_pos)
-    rotation_distance = distance(camera.rotation, return_rotation)
-    
-    if current_distance > 0.1:
-        camera_loc = lerp(camera.position, target_camera_pos, time.dt * return_speed)
-        camera.position = camera_loc
-    
-    if rotation_distance > 0.5:
-        camera.rotation = lerp(camera.rotation, return_rotation, time.dt * return_speed)
-    
-    # Check if animation is complete
-    if current_distance < 0.1 and rotation_distance < 0.5:
-        # Force final position and unlock
-        camera.position = target_camera_pos
-        camera.rotation = return_rotation
-        camera.look_at(player.position)
-        camera_locked = False
-        rot_locked = False
-        playlock = False
 
 def input(key):
     global currentztelpos, rot_locked, camera_locked, playlock, buttoncontrols, playerdeathstatus, paused
