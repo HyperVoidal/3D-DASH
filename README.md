@@ -8,7 +8,7 @@ Similar to the design of the game’s inspiration, 3D-Dash will feature a cuboid
 With various mechanics to leverage the environment, including a five-lane switching system, jumping, gravity changes and other means of traversal, players will need to think critically about situations as they arise in order to successfully traverse the environment without colliding with obstacles such as walls that otherwise forcefully restart the level.
 
 Required installed libraries:
-Ursina Engine (Latest version)
-Panda3D (If not imported through Ursina automatically)
-PIL (Pillow library, latest version)
-Pathlib
+- Ursina Engine (Latest version)
+- Panda3D (If not imported through Ursina automatically)
+- PIL (Pillow library, latest version)
+- Pathlib
