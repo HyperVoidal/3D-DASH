@@ -398,7 +398,9 @@ paused = False
 #Camera Positioning
 camera.position = Vec3(-20, 20, -20)  # Initial camera position
 camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
-camera.look_at(player.position) # Initial look at
+camera_to_player = player.position - camera.position
+if camera_to_player.length() > 0.01:
+    camera.look_at(player.position) # Initial look at
 return_rotation = Vec3(0, 45, 0)
 return_speed = 5 #how fast the camera returns to equilibrium position
 camera_loc = player.position + Vec3(-20, 20, -20)
@@ -577,7 +579,9 @@ def renderMap(map_name):
     
     camera.position = Vec3(-20, 20, -20)  # Initial camera position
     camera.rotation = Vec3(0, 45, 0) #Initial camera rotation
-    camera.look_at(player.position) # Initial look at
+    camera_to_player = player.position - camera.position
+    if camera_to_player.length() > 0.01:
+        camera.look_at(player.position) # Initial look at
     
     GameMap = Entity(model=f'{map_name}.obj', collider='mesh')
     GameMap.scale = (x_scale, 1, 1.5)
@@ -1544,7 +1548,7 @@ class LevelProgress(Entity):
             
 
 def reset_game_state(menu):
-    global velocity, currentztelpos, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc, menu_music_playing, existing_gravswap, gravity, death_anim
+    global velocity, currentztelpos, camera, camera_locked, rot_locked, playlock, game_ready, accumulator, GameMap, main_menu, camera_loc, menu_music_playing, existing_gravswap, gravity, death_anim
 
     if 'death_anim' in globals() and death_anim:
         death_anim.reset()
@@ -1581,9 +1585,11 @@ def reset_game_state(menu):
     player.visible = True
     
     # Reset camera
-    camera.position = Vec3(-20, 20, -20)
+    camera.position = player.position + Vec3(-20, 20, -20)
     camera.rotation = Vec3(0, 45, 0)
-    camera.look_at(player.position)
+    camera_to_player = player.position - camera.position
+    if camera_to_player.length() > 0.01:
+        camera.look_at(player.position)
     camera_loc = player.position + Vec3(-20, 20, -20)
     
     # Reset flags
@@ -2255,18 +2261,20 @@ def respawn_player():
 
     # Proper camera reset based on gravity state
     if gravity != abs(gravity):  # Normal gravity
-        camera.position = Vec3(-20, 20, -20)
+        camera.position = player.position + Vec3(-20, 20, -20)
         camera.rotation = Vec3(0, 45, 0)
         camera_loc = player.position + Vec3(-20, 20, -20)
         return_rotation = Vec3(0, 45, 0)
     else:  # Flipped gravity
-        camera.position = Vec3(-20, -20, -20)
+        camera.position = player.position + Vec3(-20, -20, -20)
         camera.rotation = Vec3(180, 45, 0)
         camera_loc = player.position + Vec3(-20, -20, -20)
         return_rotation = Vec3(180, 45, 0)
     
     # Force camera to look at player
-    camera.look_at(player.position)
+    camera_to_player = player.position - camera.position
+    if camera_to_player.length() > 0.01:
+        camera.look_at(player.position)
 
     # FIXED: Proper sequencing of player re-enabling
     # First make player visible
@@ -2758,7 +2766,9 @@ def game_logic_step(dt):
             camera_rot = lerp(camerarot, return_rotation, time.dt * return_speed)
             camera.rotation = camera_rot
     if not rot_locked:
-        camera.look_at(player.position)
+        camera_to_player = player.position - camera.position
+        if camera_to_player.length() > 0.01:
+            camera.look_at(player.position)
     
     levelprog.findpercentage()
 
