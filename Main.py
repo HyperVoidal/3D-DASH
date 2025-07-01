@@ -199,7 +199,7 @@ app = Ursina(development_mode=False, use_ingame_console=True)
 window.show_ursina_splash = True
 window.title = "3D DASH"
 #remember to set a custom icon when exporting this program to an exe, you can't change taskbar icon in normal ursina
-window.icon = "window_icon.ico"
+window.icon = "Assets/Textures/window_icon.ico"
 skybox_image = load_texture("Assets/Textures/sky_sunset.jpg")
 
 
