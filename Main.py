@@ -1737,8 +1737,6 @@ class PauseMenu(Entity):
         self.options_button.enabled = False
         playlock = True
         paused = True
-        if hasattr(death_sound, 'playing') and not death_sound.playing:
-            death_sound.play()
 
     def disable(self):
         global playlock, paused
