@@ -14,6 +14,17 @@ from PIL import Image, ImageDraw
 from ursina.mesh import Mesh
 from pathlib import Path
 
+
+
+#cache clearing function - clean up the compressed models folder on startup
+def cache_clear(folder):
+    try:
+        shutil.rmtree(folder)
+    except:
+        print(f"WARNING\nCache clearing error detected - please restart the game!")
+cache_clear(folder="models_compressed")
+
+
 resource_path = Path(__file__).parent.absolute()
 
 #Detect and fix any missing .json files
@@ -77,14 +88,6 @@ def setUNIXpath(resource_path):
     return resource_path
     
     
-
-#cache clearing function - clean up the compressed models folder on startup
-def cache_clear(folder):
-    try:
-        shutil.rmtree(folder)
-    except:
-        print(f"WARNING\nCache clearing error detected - please restart the game!")
-cache_clear(folder="models_compressed")
 
 def updategraphics(sizing):
     value = sizing.split("x")
