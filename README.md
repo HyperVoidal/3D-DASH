@@ -14,3 +14,5 @@ Required installed libraries:
 - Pathlib
 - Matplotlib
 - Shutil
+
+For extra documentation examples, see previous commits 'old stuff' file for previous versions. Most of these can also be seen sequentially via the commit history.

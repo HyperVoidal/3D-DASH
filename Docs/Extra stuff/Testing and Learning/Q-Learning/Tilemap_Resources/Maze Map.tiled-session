@@ -1,0 +1,35 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "",
+    "expandedProjectPaths": [
+    ],
+    "fileStates": {
+        "Maze_Tileset.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 4
+        },
+        "Maze_Tileset_2.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        }
+    },
+    "last.imagePath": "C:/School/IST/Y12 Personal Project/Testing and Learning/Q-Learning",
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 16,
+    "map.tileWidth": 16,
+    "openFiles": [
+    ],
+    "project": "Maze Map.tiled-project",
+    "recentFiles": [
+        "Maze_Tileset.tsx",
+        "Maze_Tileset_2.tsx"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 48,
+        "width": 48
+    }
+}

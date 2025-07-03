@@ -1,0 +1,50 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "Maze_Tilemap_Testing.tmx",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "fileStates": {
+        "Maze_Tilemap.tmx": {
+            "scale": 1.5,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 430.6666666666667,
+                "y": 146.66666666666663
+            }
+        },
+        "Maze_Tilemap_Testing.tmx": {
+            "scale": 2.2404166666666665,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 239.68755811790965,
+                "y": 159.79170541193974
+            }
+        },
+        "Maze_Tileset.tsx": {
+            "scaleInDock": 3,
+            "scaleInEditor": 4
+        },
+        "Maze_Tileset_2.tsx": {
+            "scaleInDock": 1.5,
+            "scaleInEditor": 1
+        }
+    },
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 16,
+    "map.tileWidth": 16,
+    "openFiles": [
+        "Maze_Tilemap.tmx",
+        "Maze_Tilemap_Testing.tmx"
+    ],
+    "project": "",
+    "recentFiles": [
+        "Maze_Tilemap.tmx",
+        "Maze_Tilemap_Testing.tmx",
+        "Maze_Tileset_2.tsx",
+        "Maze_Tileset.tsx"
+    ]
+}

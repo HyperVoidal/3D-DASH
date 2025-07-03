@@ -1,0 +1,19 @@
+Name,Start,End,Estimated Hours,Milestone
+Planning 1,2025-05-01,2025-05-11,5,Finalise Project Proposal
+Planning 2,2025-05-01,2025-05-11,2,Identify main areas for research and conduct said research
+Planning 3,2025-05-01,2025-05-11,4,Conduct rapid idea prototyping to test viability
+Design 1,2025-05-01,2025-05-11,1,Confirm main ideas as a combination of rapid viability testing and idea generation
+Design 2,2025-05-01,2025-05-11,2,"Ideate on primary components of level design and adjoining music (e.g. number, length, sizing)"
+Design 3,2025-05-01,2025-05-11,2,Consider designs for playercharacter and user interaction
+Development Sprint 1 pt 1,2025-05-12,2025-05-25,5,Design primary movement system and player controls
+Development Sprint 1 pt 2,2025-05-12,2025-05-25,5,Set up camera control system and auto-orient functionality
+Development Sprint 1 pt 3,2025-05-19,2025-06-01,20,Create and apply main levels and music to existing gameplay (seperately)
+Testing & Debugging 1,2025-05-22,2025-06-01,5,"Will occur throughout project but this is the primary one, as well as including user testing and feedback"
+Development Sprint 2 pt 1,2025-05-22,2025-06-01,5,"Implementation and testing of user suggestions, including analysis of reccommendations"
+Development Sprint 2 pt 2,2025-05-26,2025-06-08,10,"Implementation of main UI design, including menu systems and level loading components"
+Development Sprint 2 pt 3,2025-05-26,2025-06-08,5,"Creation of progress saving system (tracking furthest progress, no checkpoints will be available)"
+Development Sprint 2 pt 4,2025-05-26,2025-06-05,15,"Application of shader effects in level design, including systems such as light adjustments and sync to music"
+Testing & Debugging 2,2025-05-29,2025-06-05,10,Implementation of OOP principles in refactoring code structure and ensuring efficient systems
+Testing & Debugging 3,2025-06-02,2025-06-10,5,"Final testing and debugging control, Q/A testing with helpful users and finalising all components"
+Evaluation & Deployment,2025-06-05,2025-06-19,15,Evaluation of my own work and it's resultant effectiveness in deployment and user satisfaction
+,,,116,
