@@ -11,5 +11,6 @@ Required installed libraries:
 - Ursina Engine (Latest version)
 - Panda3D (If not imported through Ursina automatically)
 - PIL (Pillow library, latest version)
-- Patlib
+- Pathlib
 - Matplotlib
+- Shutil
